@@ -37,7 +37,7 @@
 
 ## 6. Final Verification
 
-- [ ] 6.1 Review all new Simplified Chinese copy with the humanizer guidance.
-- [ ] 6.2 Run all tests, normal build, and GitHub Pages base-path build.
-- [ ] 6.3 Run desktop and mobile browser checks.
-- [ ] 6.4 Run strict OpenSpec validation and commit final verification.
+- [x] 6.1 Review all new Simplified Chinese copy with the humanizer guidance.
+- [x] 6.2 Run all tests, normal build, and GitHub Pages base-path build.
+- [x] 6.3 Run desktop and mobile browser checks.
+- [x] 6.4 Run strict OpenSpec validation and commit final verification.

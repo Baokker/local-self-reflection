@@ -567,7 +567,7 @@ export default function App() {
   async function deleteCurrentChat() {
     const session = chatWorkspace.activeSession;
     if (!session?.id || !appState.workspace.handle?.getFileHandle) return;
-    if (!window.confirm(`删除会话“${session.title}”？本地 JSON 文件会保留，但会话会从列表中隐藏。`)) return;
+    if (!window.confirm(`把会话“${session.title}”从列表里删除吗？为了避免误删，原始记录仍会保留在本地。`)) return;
     const next = await softDeleteChatSession(appState.workspace.handle as BrowserDirectoryHandle & {
       getFileHandle: NonNullable<BrowserDirectoryHandle['getFileHandle']>;
     }, session.id);
