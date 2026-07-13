@@ -84,6 +84,11 @@ export type ReflectionMessage = {
   content: string;
   createdAt: string;
   sources?: string[];
+  citations?: Array<{
+    sourceName: string;
+    storedName: string;
+    excerpt: string;
+  }>;
 };
 
 export type ReflectionSession = {

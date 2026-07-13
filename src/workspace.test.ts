@@ -226,7 +226,8 @@ describe('workspace safety', () => {
         {
           role: 'assistant',
           content: '你在意的可能不是二选一，而是能不能保留选择的余地。',
-          createdAt: '2026-07-13T02:00:01.000Z'
+          createdAt: '2026-07-13T02:00:01.000Z',
+          sources: ['旧材料.md']
         }
       ]
     });
@@ -235,5 +236,6 @@ describe('workspace safety', () => {
     expect(session?.profileSupplement).toMatch(/换一种走法/);
     expect(session?.messages).toHaveLength(2);
     expect(session?.messages[1]?.role).toBe('assistant');
+    expect(session?.messages[1]?.sources).toEqual(['旧材料.md']);
   });
 });

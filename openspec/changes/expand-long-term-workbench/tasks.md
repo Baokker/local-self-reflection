@@ -30,10 +30,10 @@
 
 ## 5. Expandable Citations
 
-- [ ] 5.1 Save exact retrieved excerpts with assistant messages.
-- [ ] 5.2 Render expandable citation details beneath answers.
-- [ ] 5.3 Preserve backward compatibility for older source-only messages.
-- [ ] 5.4 Add citation persistence and UI tests and commit the change.
+- [x] 5.1 Save exact retrieved excerpts with assistant messages.
+- [x] 5.2 Render expandable citation details beneath answers.
+- [x] 5.3 Preserve backward compatibility for older source-only messages.
+- [x] 5.4 Add citation persistence and UI tests and commit the change.
 
 ## 6. Final Verification
 

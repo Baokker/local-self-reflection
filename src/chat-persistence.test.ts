@@ -66,7 +66,15 @@ describe('multiple local chat sessions', () => {
     });
     const firstSaved = await saveChatSession(root, {
       ...first.activeSession!,
-      messages: [{ role: 'user', content: '我对工作有些犹豫。', createdAt: '2026-07-13T01:00:00.000Z' }]
+      messages: [
+        { role: 'user', content: '我对工作有些犹豫。', createdAt: '2026-07-13T01:00:00.000Z' },
+        {
+          role: 'assistant',
+          content: '你提到工作让你很累。',
+          createdAt: '2026-07-13T01:00:01.000Z',
+          citations: [{ sourceName: '工作.md', storedName: 'work.md', excerpt: '最近工作让我很累。' }]
+        }
+      ]
     });
     const second = await createChatSession(root, { title: '关于生活' });
 
@@ -86,6 +94,7 @@ describe('multiple local chat sessions', () => {
       materialStoredNames: ['work.md'],
       recentMessageLimit: 4
     });
+    expect(restored.activeSession?.messages[1]?.citations?.[0]?.excerpt).toBe('最近工作让我很累。');
   });
 
   it('migrates the legacy session without changing the old file', async () => {

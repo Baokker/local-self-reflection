@@ -899,6 +899,35 @@ select:focus {
   border-top: 1px solid rgba(93, 83, 65, 0.14);
 }
 
+.message-citations {
+  display: grid;
+  gap: 7px;
+  padding-top: 10px;
+  margin-top: 10px;
+  border-top: 1px solid rgba(93, 83, 65, 0.14);
+}
+
+.message-citations details {
+  color: #6b604e;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 0.78rem;
+}
+
+.message-citations summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.message-citations blockquote {
+  padding: 10px 12px;
+  margin: 8px 0 0;
+  color: #4c584e;
+  background: rgba(255, 250, 241, 0.7);
+  border-left: 3px solid rgba(47, 88, 73, 0.3);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
 .prompt-action {
   justify-self: start;
 }

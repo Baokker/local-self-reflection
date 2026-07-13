@@ -210,7 +210,9 @@ describe('first-run flow shell', () => {
 
     await user.type(screen.getByPlaceholderText(/稳定和自由/), '为什么工作让我疲惫？');
     await user.click(screen.getByRole('button', { name: /发送/ }));
-    await waitFor(() => expect(screen.getByText(/参考：工作笔记.md/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('来源：工作笔记.md')).toBeInTheDocument());
+    await user.click(screen.getByText('来源：工作笔记.md'));
+    expect(screen.getByText(/最近工作让我很疲惫/)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /个人 SWOT/ }));
     await waitFor(() => expect(screen.getByRole('heading', { name: '个人 SWOT' })).toBeInTheDocument());

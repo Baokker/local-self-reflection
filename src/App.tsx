@@ -481,7 +481,12 @@ export default function App() {
       role: 'assistant',
       content: reply.trim(),
       createdAt: new Date().toISOString(),
-      sources: sourceNames
+      sources: sourceNames,
+      citations: retrievedChunks.map((chunk) => ({
+        sourceName: chunk.sourceName,
+        storedName: chunk.storedName,
+        excerpt: chunk.text
+      }))
     };
     const nextSession = {
       ...activeSession,
@@ -1383,7 +1388,16 @@ function renderStep({
                 <article className={`message ${message.role}`} key={`${message.createdAt}-${message.content}`}>
                   <span>{message.role === 'user' ? '你' : 'AI'}</span>
                   <p>{message.content}</p>
-                  {message.sources?.length ? (
+                  {message.citations?.length ? (
+                    <div className="message-citations">
+                      {message.citations.map((citation, index) => (
+                        <details key={`${citation.storedName}-${index}`}>
+                          <summary>来源：{citation.sourceName}</summary>
+                          <blockquote>{citation.excerpt}</blockquote>
+                        </details>
+                      ))}
+                    </div>
+                  ) : message.sources?.length ? (
                     <div className="message-sources">
                       参考：{message.sources.join('、')}
                     </div>
