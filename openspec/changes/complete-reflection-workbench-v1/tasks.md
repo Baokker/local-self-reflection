@@ -16,10 +16,10 @@
 
 ## 3. Multiple Chat Sessions
 
-- [ ] 3.1 Add a chat manifest and one local file per conversation.
-- [ ] 3.2 Support creating, renaming, switching, and restoring conversations.
-- [ ] 3.3 Migrate the existing reflection session into the first chat when needed.
-- [ ] 3.4 Add multi-session UI and persistence tests and commit the change.
+- [x] 3.1 Add a chat manifest and one local file per conversation.
+- [x] 3.2 Support creating, renaming, switching, and restoring conversations.
+- [x] 3.3 Migrate the existing reflection session into the first chat when needed.
+- [x] 3.4 Add multi-session UI and persistence tests and commit the change.
 
 ## 4. Local Material Retrieval
 

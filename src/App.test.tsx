@@ -297,6 +297,17 @@ describe('first-run flow shell', () => {
     await user.click(screen.getByRole('button', { name: /发送/ }));
     await waitFor(() => expect(screen.getByText(/更稳定的自我站位/)).toBeInTheDocument());
 
+    await user.click(screen.getByRole('button', { name: /新建对话/ }));
+    expect(screen.queryByText('我为什么一直犹豫？')).not.toBeInTheDocument();
+    const titleInput = screen.getByLabelText('对话名称');
+    await user.clear(titleInput);
+    await user.type(titleInput, '关于下一步');
+    await user.click(screen.getByRole('button', { name: /改名/ }));
+    expect(screen.getByRole('button', { name: '关于下一步' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '关于这次画像' }));
+    await waitFor(() => expect(screen.getByText('我为什么一直犹豫？')).toBeInTheDocument());
+
     first.unmount();
     render(<App />);
     await user.click(screen.getByRole('button', { name: /^开始$/ }));

@@ -9,7 +9,8 @@ import {
   NotebookText,
   ShieldCheck,
   Upload,
-  ExternalLink
+  ExternalLink,
+  Plus
 } from 'lucide-react';
 import { createInitialAppState, handleWorkspacePicked, type AppState, type Step } from './app-state';
 import { buildProfilePipeline } from './analysis';
@@ -26,18 +27,22 @@ import {
   importMaterialFile,
   ensureProfileHistory,
   loadProfileHistory,
-  loadReflectionSession,
   loadWorkspaceMetadata,
+  ensureChatWorkspace,
+  createChatSession,
+  activateChatSession,
+  renameChatSession,
+  saveChatSession,
   saveGeneratedProfile,
   saveOnboardingAnswer,
-  saveReflectionSession,
   startNewOnboardingSession,
   type ReflectionMessage,
-  type ReflectionSession,
   type SavedProfile,
   type WorkspaceMetadata,
   type OnboardingAnswerRecord,
-  type ProfileHistory
+  type ProfileHistory,
+  type ChatSession,
+  type ChatWorkspace
 } from './workspace';
 import './styles.css';
 
@@ -51,9 +56,18 @@ const steps: Array<{ id: Step; label: string }> = [
   { id: 'chat', label: '接着聊' }
 ];
 
-const emptyReflectionSession: ReflectionSession = {
+const emptyChatSession: ChatSession = {
+  id: '',
+  title: '新的对话',
   profileSupplement: '',
-  messages: []
+  messages: [],
+  createdAt: '',
+  updatedAt: ''
+};
+
+const emptyChatWorkspace: ChatWorkspace = {
+  manifest: { activeChatId: null, chats: [] },
+  activeSession: emptyChatSession
 };
 
 export default function App() {
@@ -73,12 +87,13 @@ export default function App() {
   });
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const [generatingProfile, setGeneratingProfile] = useState(false);
-  const [reflectionSession, setReflectionSession] = useState<ReflectionSession>(emptyReflectionSession);
+  const [chatWorkspace, setChatWorkspace] = useState<ChatWorkspace>(emptyChatWorkspace);
   const [chatInput, setChatInput] = useState('');
   const [sendingChat, setSendingChat] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const activeIndex = steps.findIndex((item) => item.id === appState.step);
   const modelReady = modelStatus?.status === 'success';
+  const reflectionSession = chatWorkspace.activeSession ?? emptyChatSession;
 
   const modelConfig = appState.modelConfig;
 
@@ -103,10 +118,12 @@ export default function App() {
         getFileHandle: NonNullable<BrowserDirectoryHandle['getFileHandle']>;
       });
       const profile = history.versions.find((item) => item.id === history.currentProfileId) ?? null;
-      const savedReflection = await loadReflectionSession(handle);
+      const savedChats = await ensureChatWorkspace(handle as BrowserDirectoryHandle & {
+        getFileHandle: NonNullable<BrowserDirectoryHandle['getFileHandle']>;
+      });
       const resumedStep = next.step === 'onboarding'
         ? 'onboarding'
-        : savedReflection?.messages.length
+        : savedChats.activeSession?.messages.length
           ? 'chat'
           : profile
             ? 'profile'
@@ -121,7 +138,7 @@ export default function App() {
       setGeneratedProfile(profile);
       setProfileHistory(history);
       setSelectedProfileId(history.currentProfileId);
-      setReflectionSession(savedReflection ?? emptyReflectionSession);
+      setChatWorkspace(savedChats.activeSession ? savedChats : { ...savedChats, activeSession: emptyChatSession });
     } catch {
       setAppState((current) => ({
         ...current,
@@ -285,7 +302,10 @@ export default function App() {
       setProfileHistory(history);
       setSelectedProfileId(savedVersion.id);
       setFollowUpPrompt('');
-      setReflectionSession(emptyReflectionSession);
+      setChatWorkspace((current) => ({
+        manifest: { ...current.manifest, activeChatId: null },
+        activeSession: emptyChatSession
+      }));
       setGeneratingProfile(false);
       setAppState((current) => ({
         ...current,
@@ -323,16 +343,24 @@ export default function App() {
   }
 
   async function continueToChat() {
-    const nextSession = {
+    const nextSession: ChatSession = {
       ...reflectionSession,
       profileSupplement: reflectionSession.profileSupplement.trim()
     };
     if (appState.workspace.handle?.getFileHandle) {
-      await saveReflectionSession(appState.workspace.handle as BrowserDirectoryHandle & {
+      const workspaceHandle = appState.workspace.handle as BrowserDirectoryHandle & {
         getFileHandle: NonNullable<BrowserDirectoryHandle['getFileHandle']>;
-      }, nextSession);
+      };
+      const saved = nextSession.id
+        ? await saveChatSession(workspaceHandle, nextSession)
+        : await createChatSession(workspaceHandle, {
+            title: '关于这次画像',
+            profileSupplement: nextSession.profileSupplement
+          });
+      setChatWorkspace(saved);
+    } else {
+      setChatWorkspace((current) => ({ ...current, activeSession: nextSession }));
     }
-    setReflectionSession(nextSession);
     setAppState((current) => ({ ...current, step: 'chat' }));
   }
 
@@ -373,13 +401,49 @@ export default function App() {
       messages: [...messagesWithQuestion, assistantMessage]
     };
     if (appState.workspace.handle?.getFileHandle) {
-      await saveReflectionSession(appState.workspace.handle as BrowserDirectoryHandle & {
+      const saved = await saveChatSession(appState.workspace.handle as BrowserDirectoryHandle & {
         getFileHandle: NonNullable<BrowserDirectoryHandle['getFileHandle']>;
       }, nextSession);
+      setChatWorkspace(saved);
+    } else {
+      setChatWorkspace((current) => ({ ...current, activeSession: nextSession }));
     }
-    setReflectionSession(nextSession);
     setChatInput('');
     setSendingChat(false);
+  }
+
+  function updateReflectionSession(updater: React.SetStateAction<ChatSession>) {
+    setChatWorkspace((current) => ({
+      ...current,
+      activeSession: typeof updater === 'function'
+        ? updater(current.activeSession ?? emptyChatSession)
+        : updater
+    }));
+  }
+
+  async function beginNewChat() {
+    if (!appState.workspace.handle?.getFileHandle) return;
+    const next = await createChatSession(appState.workspace.handle as BrowserDirectoryHandle & {
+      getFileHandle: NonNullable<BrowserDirectoryHandle['getFileHandle']>;
+    });
+    setChatWorkspace(next);
+  }
+
+  async function switchChat(chatId: string) {
+    if (!appState.workspace.handle?.getFileHandle) return;
+    const next = await activateChatSession(appState.workspace.handle as BrowserDirectoryHandle & {
+      getFileHandle: NonNullable<BrowserDirectoryHandle['getFileHandle']>;
+    }, chatId);
+    setChatWorkspace(next);
+  }
+
+  async function renameCurrentChat() {
+    const session = chatWorkspace.activeSession;
+    if (!session?.id || !appState.workspace.handle?.getFileHandle) return;
+    const next = await renameChatSession(appState.workspace.handle as BrowserDirectoryHandle & {
+      getFileHandle: NonNullable<BrowserDirectoryHandle['getFileHandle']>;
+    }, session.id, session.title);
+    setChatWorkspace(next);
   }
 
   const workspacePicked = useMemo(() => Boolean(appState.workspace.handle), [appState.workspace.handle]);
@@ -436,7 +500,11 @@ export default function App() {
           beginNewReflection,
           generatingProfile,
           reflectionSession,
-          setReflectionSession,
+          updateReflectionSession,
+          chatWorkspace,
+          beginNewChat,
+          switchChat,
+          renameCurrentChat,
           continueToChat,
           chatInput,
           setChatInput,
@@ -476,7 +544,11 @@ function renderStep({
   beginNewReflection,
   generatingProfile,
   reflectionSession,
-  setReflectionSession,
+  updateReflectionSession,
+  chatWorkspace,
+  beginNewChat,
+  switchChat,
+  renameCurrentChat,
   continueToChat,
   chatInput,
   setChatInput,
@@ -509,8 +581,12 @@ function renderStep({
   setSelectedProfileId: React.Dispatch<React.SetStateAction<string | null>>;
   beginNewReflection: () => Promise<void>;
   generatingProfile: boolean;
-  reflectionSession: ReflectionSession;
-  setReflectionSession: React.Dispatch<React.SetStateAction<ReflectionSession>>;
+  reflectionSession: ChatSession;
+  updateReflectionSession: (updater: React.SetStateAction<ChatSession>) => void;
+  chatWorkspace: ChatWorkspace;
+  beginNewChat: () => Promise<void>;
+  switchChat: (chatId: string) => Promise<void>;
+  renameCurrentChat: () => Promise<void>;
   continueToChat: () => Promise<void>;
   chatInput: string;
   setChatInput: React.Dispatch<React.SetStateAction<string>>;
@@ -805,7 +881,7 @@ function renderStep({
           <textarea
             placeholder="比如：我不是想停下来，只是想换一种走法。"
             value={reflectionSession.profileSupplement}
-            onChange={(event) => setReflectionSession((current) => ({
+            onChange={(event) => updateReflectionSession((current) => ({
               ...current,
               profileSupplement: event.target.value
             }))}
@@ -819,7 +895,7 @@ function renderStep({
   }
 
   return (
-    <Panel
+    <Panel wide
       icon={<MessageCircle />}
       kicker={reflectionSession.messages.length ? '上次的对话还在' : '从画像接着聊'}
       title="继续对话"
@@ -827,6 +903,32 @@ function renderStep({
     >
       <div className="chat-workbench">
         <aside className="context-panel" aria-label="本次对话参考内容">
+          <div className="chat-session-heading">
+            <strong>本地会话</strong>
+            <button className="icon-action" title="新建对话" aria-label="新建对话" onClick={() => void beginNewChat()}><Plus size={16} /></button>
+          </div>
+          <div className="chat-session-list">
+            {chatWorkspace.manifest.chats.map((chat) => (
+              <button
+                className={chat.id === reflectionSession.id ? 'chat-session-item active' : 'chat-session-item'}
+                key={chat.id}
+                onClick={() => void switchChat(chat.id)}
+              >
+                {chat.title}
+              </button>
+            ))}
+          </div>
+          {reflectionSession.id ? (
+            <div className="rename-chat">
+              <input
+                aria-label="对话名称"
+                value={reflectionSession.title}
+                onChange={(event) => updateReflectionSession((current) => ({ ...current, title: event.target.value }))}
+              />
+              <button className="secondary-action" onClick={() => void renameCurrentChat()}>改名</button>
+            </div>
+          ) : null}
+          <div className="context-divider" />
           <strong>这次会参考</strong>
           <ul>
             <li>阶段性画像</li>
@@ -898,16 +1000,18 @@ function Panel({
   kicker,
   title,
   body,
-  children
+  children,
+  wide = false
 }: {
   icon: React.ReactNode;
   kicker: string;
   title: string;
   body: string;
   children: React.ReactNode;
+  wide?: boolean;
 }) {
   return (
-    <div className="panel">
+    <div className={wide ? 'panel wide' : 'panel'}>
       <div className="panel-icon">{icon}</div>
       <p className="eyebrow">{kicker}</p>
       <h2>{title}</h2>

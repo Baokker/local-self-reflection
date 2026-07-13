@@ -86,6 +86,31 @@ export type ReflectionSession = {
   messages: ReflectionMessage[];
 };
 
+export type ChatSession = ReflectionSession & {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ChatManifestEntry = {
+  id: string;
+  title: string;
+  fileName: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ChatManifest = {
+  activeChatId: string | null;
+  chats: ChatManifestEntry[];
+};
+
+export type ChatWorkspace = {
+  manifest: ChatManifest;
+  activeSession: ChatSession | null;
+};
+
 export async function createWorkspaceStructure(root: DirectoryLike) {
   const workspace = await root.getDirectoryHandle(WORKSPACE_DIR, { create: true });
   for (const directory of WORKSPACE_SUBDIRECTORIES) {
@@ -274,6 +299,81 @@ export async function loadReflectionSession(root: DirectoryLike): Promise<Reflec
   }
 }
 
+export async function ensureChatWorkspace(root: DirectoryWithFiles): Promise<ChatWorkspace> {
+  const manifest = await ensureChatManifest(root);
+  return loadChatWorkspaceFromManifest(root, manifest);
+}
+
+export async function createChatSession(
+  root: DirectoryWithFiles,
+  input: { title?: string; profileSupplement?: string } = {}
+): Promise<ChatWorkspace> {
+  const manifest = await ensureChatManifest(root);
+  const now = new Date().toISOString();
+  const id = await createAvailableChatId(root, manifest, now);
+  const session: ChatSession = {
+    id,
+    title: input.title?.trim() || '新的对话',
+    profileSupplement: input.profileSupplement?.trim() || '',
+    messages: [],
+    createdAt: now,
+    updatedAt: now
+  };
+  const entry = chatEntryFromSession(session);
+
+  await writeChatSession(root, session);
+  const nextManifest = {
+    activeChatId: id,
+    chats: [...manifest.chats, entry]
+  };
+  await writeChatManifest(root, nextManifest);
+  return { manifest: sortChatManifest(nextManifest), activeSession: session };
+}
+
+export async function saveChatSession(root: DirectoryWithFiles, session: ChatSession): Promise<ChatWorkspace> {
+  const manifest = await ensureChatManifest(root);
+  const nextSession = {
+    ...session,
+    title: session.title.trim() || '未命名对话',
+    updatedAt: new Date().toISOString()
+  };
+  await writeChatSession(root, nextSession);
+
+  const entry = chatEntryFromSession(nextSession);
+  const nextManifest = {
+    activeChatId: nextSession.id,
+    chats: [...manifest.chats.filter((item) => item.id !== nextSession.id), entry]
+  };
+  await writeChatManifest(root, nextManifest);
+  return { manifest: sortChatManifest(nextManifest), activeSession: nextSession };
+}
+
+export async function activateChatSession(root: DirectoryWithFiles, chatId: string): Promise<ChatWorkspace> {
+  const manifest = await ensureChatManifest(root);
+  const entry = manifest.chats.find((item) => item.id === chatId);
+  if (!entry) return loadChatWorkspaceFromManifest(root, manifest);
+
+  const nextManifest = { ...manifest, activeChatId: chatId };
+  await writeChatManifest(root, nextManifest);
+  return {
+    manifest: sortChatManifest(nextManifest),
+    activeSession: await readChatSession(root, entry.fileName)
+  };
+}
+
+export async function renameChatSession(
+  root: DirectoryWithFiles,
+  chatId: string,
+  title: string
+): Promise<ChatWorkspace> {
+  const manifest = await ensureChatManifest(root);
+  const entry = manifest.chats.find((item) => item.id === chatId);
+  if (!entry) return loadChatWorkspaceFromManifest(root, manifest);
+  const session = await readChatSession(root, entry.fileName);
+  if (!session) return loadChatWorkspaceFromManifest(root, manifest);
+  return saveChatSession(root, { ...session, title: title.trim() || '未命名对话' });
+}
+
 function uniqueMaterialName(fileName: string) {
   const safeName = fileName.replace(/[^\w.\-\u4e00-\u9fff]/g, '_');
   return `${Date.now()}-${safeName}`;
@@ -315,6 +415,115 @@ async function readWorkspaceFile(root: DirectoryLike, segments: string[]) {
   } catch {
     return null;
   }
+}
+
+async function ensureChatManifest(root: DirectoryWithFiles): Promise<ChatManifest> {
+  const existing = await readChatManifest(root);
+  if (existing) return existing;
+
+  const legacy = await loadReflectionSession(root);
+  if (!legacy) {
+    const empty: ChatManifest = { activeChatId: null, chats: [] };
+    await writeChatManifest(root, empty);
+    return empty;
+  }
+
+  const createdAt = legacy.messages[0]?.createdAt ?? new Date().toISOString();
+  const updatedAt = legacy.messages.at(-1)?.createdAt ?? createdAt;
+  const emptyManifest: ChatManifest = { activeChatId: null, chats: [] };
+  const id = await createAvailableChatId(root, emptyManifest, createdAt, 'legacy-chat');
+  const session: ChatSession = {
+    id,
+    title: legacy.messages.find((message) => message.role === 'user')?.content.slice(0, 24) || '第一次对话',
+    profileSupplement: legacy.profileSupplement,
+    messages: legacy.messages,
+    createdAt,
+    updatedAt
+  };
+  const manifest: ChatManifest = {
+    activeChatId: id,
+    chats: [chatEntryFromSession(session)]
+  };
+  await writeChatSession(root, session);
+  await writeChatManifest(root, manifest);
+  return manifest;
+}
+
+async function readChatManifest(root: DirectoryLike): Promise<ChatManifest | null> {
+  const existing = await readWorkspaceFile(root, ['sessions', 'chats', 'manifest.json']);
+  if (!existing) return null;
+  try {
+    return JSON.parse(existing) as ChatManifest;
+  } catch {
+    return null;
+  }
+}
+
+async function writeChatManifest(root: DirectoryWithFiles, manifest: ChatManifest) {
+  await writeWorkspaceFile(root, ['sessions', 'chats', 'manifest.json'], JSON.stringify(manifest, null, 2));
+}
+
+async function readChatSession(root: DirectoryLike, fileName: string): Promise<ChatSession | null> {
+  const existing = await readWorkspaceFile(root, ['sessions', 'chats', fileName]);
+  if (!existing) return null;
+  try {
+    return JSON.parse(existing) as ChatSession;
+  } catch {
+    return null;
+  }
+}
+
+async function writeChatSession(root: DirectoryWithFiles, session: ChatSession) {
+  await writeWorkspaceFile(root, ['sessions', 'chats', `${session.id}.json`], JSON.stringify(session, null, 2));
+}
+
+async function loadChatWorkspaceFromManifest(
+  root: DirectoryLike,
+  manifest: ChatManifest
+): Promise<ChatWorkspace> {
+  const sortedManifest = sortChatManifest(manifest);
+  const activeEntry = sortedManifest.chats.find((item) => item.id === sortedManifest.activeChatId);
+  return {
+    manifest: sortedManifest,
+    activeSession: activeEntry ? await readChatSession(root, activeEntry.fileName) : null
+  };
+}
+
+function sortChatManifest(manifest: ChatManifest): ChatManifest {
+  return {
+    ...manifest,
+    chats: [...manifest.chats].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+  };
+}
+
+function chatEntryFromSession(session: ChatSession): ChatManifestEntry {
+  return {
+    id: session.id,
+    title: session.title,
+    fileName: `${session.id}.json`,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt
+  };
+}
+
+async function createAvailableChatId(
+  root: DirectoryLike,
+  manifest: ChatManifest,
+  createdAt: string,
+  prefix = 'chat'
+) {
+  const timestamp = createdAt.replace(/[^0-9]/g, '').slice(0, 17) || String(Date.now());
+  const base = `${prefix}-${timestamp}`;
+  let candidate = base;
+  let suffix = 2;
+  while (
+    manifest.chats.some((item) => item.id === candidate) ||
+    await readWorkspaceFile(root, ['sessions', 'chats', `${candidate}.json`])
+  ) {
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
 }
 
 async function ensureProfileManifest(root: DirectoryWithFiles): Promise<ProfileManifest> {
