@@ -54,6 +54,27 @@ export type SavedProfile = {
   };
 };
 
+export type ProfileVersion = SavedProfile & {
+  id: string;
+};
+
+export type ProfileManifestEntry = {
+  id: string;
+  fileName: string;
+  createdAt: string;
+  sourceCount: number;
+};
+
+export type ProfileManifest = {
+  currentProfileId: string | null;
+  versions: ProfileManifestEntry[];
+};
+
+export type ProfileHistory = {
+  currentProfileId: string | null;
+  versions: ProfileVersion[];
+};
+
 export type ReflectionMessage = {
   role: 'user' | 'assistant';
   content: string;
@@ -169,11 +190,45 @@ export async function loadOnboardingSession(root: DirectoryLike): Promise<Onboar
   }
 }
 
+export async function startNewOnboardingSession(root: DirectoryWithFiles) {
+  const session: OnboardingSession = {
+    currentStep: 0,
+    completed: false,
+    answers: []
+  };
+  await writeWorkspaceFile(root, ['sessions', 'onboarding-session.json'], JSON.stringify(session, null, 2));
+  return session;
+}
+
 export async function saveGeneratedProfile(root: DirectoryWithFiles, profile: SavedProfile) {
-  await writeWorkspaceFile(root, ['profiles', 'current-self-profile.json'], JSON.stringify(profile, null, 2));
+  const manifest = await ensureProfileManifest(root);
+  const id = await createAvailableProfileId(root, manifest, profile.metadata.generatedAt);
+  const version: ProfileVersion = { id, ...profile };
+  const entry: ProfileManifestEntry = {
+    id,
+    fileName: `${id}.json`,
+    createdAt: profile.metadata.generatedAt,
+    sourceCount: profile.metadata.sources.length
+  };
+
+  await writeWorkspaceFile(root, ['profiles', 'versions', entry.fileName], JSON.stringify(version, null, 2));
+  await writeProfileManifest(root, {
+    currentProfileId: id,
+    versions: [...manifest.versions, entry]
+  });
+  return version;
 }
 
 export async function loadLatestProfile(root: DirectoryLike): Promise<SavedProfile | null> {
+  const manifest = await readProfileManifest(root);
+  if (manifest?.currentProfileId) {
+    const entry = manifest.versions.find((item) => item.id === manifest.currentProfileId);
+    if (entry) {
+      const version = await readProfileVersion(root, entry.fileName);
+      if (version) return version;
+    }
+  }
+
   const existing = await readWorkspaceFile(root, ['profiles', 'current-self-profile.json']);
   if (!existing) return null;
 
@@ -182,6 +237,26 @@ export async function loadLatestProfile(root: DirectoryLike): Promise<SavedProfi
   } catch {
     return null;
   }
+}
+
+export async function loadProfileHistory(root: DirectoryLike): Promise<ProfileHistory> {
+  const manifest = await readProfileManifest(root);
+  if (!manifest) return { currentProfileId: null, versions: [] };
+
+  const versions = (await Promise.all(
+    manifest.versions.map((entry) => readProfileVersion(root, entry.fileName))
+  )).filter((version): version is ProfileVersion => Boolean(version));
+
+  versions.sort((left, right) => right.metadata.generatedAt.localeCompare(left.metadata.generatedAt));
+  return {
+    currentProfileId: manifest.currentProfileId,
+    versions
+  };
+}
+
+export async function ensureProfileHistory(root: DirectoryWithFiles): Promise<ProfileHistory> {
+  await ensureProfileManifest(root);
+  return loadProfileHistory(root);
 }
 
 export async function saveReflectionSession(root: DirectoryWithFiles, session: ReflectionSession) {
@@ -240,4 +315,90 @@ async function readWorkspaceFile(root: DirectoryLike, segments: string[]) {
   } catch {
     return null;
   }
+}
+
+async function ensureProfileManifest(root: DirectoryWithFiles): Promise<ProfileManifest> {
+  const existing = await readProfileManifest(root);
+  if (existing) return existing;
+
+  const legacy = await readLegacyProfile(root);
+  if (!legacy) {
+    const empty: ProfileManifest = { currentProfileId: null, versions: [] };
+    await writeProfileManifest(root, empty);
+    return empty;
+  }
+
+  const emptyManifest: ProfileManifest = { currentProfileId: null, versions: [] };
+  const id = await createAvailableProfileId(root, emptyManifest, legacy.metadata.generatedAt, 'legacy-profile');
+  const version: ProfileVersion = { id, ...legacy };
+  const entry: ProfileManifestEntry = {
+    id,
+    fileName: `${id}.json`,
+    createdAt: legacy.metadata.generatedAt,
+    sourceCount: legacy.metadata.sources.length
+  };
+  const manifest: ProfileManifest = {
+    currentProfileId: id,
+    versions: [entry]
+  };
+
+  await writeWorkspaceFile(root, ['profiles', 'versions', entry.fileName], JSON.stringify(version, null, 2));
+  await writeProfileManifest(root, manifest);
+  return manifest;
+}
+
+async function readProfileManifest(root: DirectoryLike): Promise<ProfileManifest | null> {
+  const existing = await readWorkspaceFile(root, ['profiles', 'manifest.json']);
+  if (!existing) return null;
+  try {
+    return JSON.parse(existing) as ProfileManifest;
+  } catch {
+    return null;
+  }
+}
+
+async function writeProfileManifest(root: DirectoryWithFiles, manifest: ProfileManifest) {
+  await writeWorkspaceFile(root, ['profiles', 'manifest.json'], JSON.stringify(manifest, null, 2));
+}
+
+async function readProfileVersion(root: DirectoryLike, fileName: string): Promise<ProfileVersion | null> {
+  const existing = await readWorkspaceFile(root, ['profiles', 'versions', fileName]);
+  if (!existing) return null;
+  try {
+    return JSON.parse(existing) as ProfileVersion;
+  } catch {
+    return null;
+  }
+}
+
+async function readLegacyProfile(root: DirectoryLike): Promise<SavedProfile | null> {
+  const existing = await readWorkspaceFile(root, ['profiles', 'current-self-profile.json']);
+  if (!existing) return null;
+  try {
+    const parsed = JSON.parse(existing) as SavedProfile;
+    return parsed.profile && parsed.metadata?.generatedAt ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function createAvailableProfileId(
+  root: DirectoryLike,
+  manifest: ProfileManifest,
+  generatedAt: string,
+  prefix = 'profile'
+) {
+  const timestamp = generatedAt.replace(/[^0-9]/g, '').slice(0, 17) || String(Date.now());
+  const base = `${prefix}-${timestamp}`;
+  let candidate = base;
+  let suffix = 2;
+
+  while (
+    manifest.versions.some((item) => item.id === candidate) ||
+    await readWorkspaceFile(root, ['profiles', 'versions', `${candidate}.json`])
+  ) {
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
 }

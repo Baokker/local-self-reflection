@@ -9,6 +9,7 @@ import {
   saveGeneratedProfile,
   saveOnboardingAnswer,
   saveReflectionSession,
+  startNewOnboardingSession,
   safeWorkspacePath,
   WORKSPACE_DIR
 } from './workspace';
@@ -144,6 +145,24 @@ describe('workspace safety', () => {
     expect(session?.completed).toBe(false);
     expect(session?.answers[0]?.questionId).toBe('recurring-thought');
     expect(session?.answers[0]?.followUpPrompt).toMatch(/具体时刻/);
+  });
+
+  it('starts a new onboarding round without changing saved profiles', async () => {
+    const root = new MemoryDirectoryHandle('root');
+    await saveGeneratedProfile(root, {
+      profile: '保留这份画像',
+      metadata: {
+        sources: ['onboarding:q1'],
+        generatedAt: '2026-07-13T00:00:00.000Z',
+        pipeline: 'bounded-profile-v1'
+      }
+    });
+
+    const session = await startNewOnboardingSession(root);
+
+    expect(session.answers).toEqual([]);
+    expect(session.completed).toBe(false);
+    expect((await loadLatestProfile(root))?.profile).toBe('保留这份画像');
   });
 
   it('keeps pre-existing user files outside ai-self-analysis unchanged', async () => {

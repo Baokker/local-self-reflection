@@ -24,17 +24,20 @@ import {
 } from './model';
 import {
   importMaterialFile,
-  loadLatestProfile,
+  ensureProfileHistory,
+  loadProfileHistory,
   loadReflectionSession,
   loadWorkspaceMetadata,
   saveGeneratedProfile,
   saveOnboardingAnswer,
   saveReflectionSession,
+  startNewOnboardingSession,
   type ReflectionMessage,
   type ReflectionSession,
   type SavedProfile,
   type WorkspaceMetadata,
-  type OnboardingAnswerRecord
+  type OnboardingAnswerRecord,
+  type ProfileHistory
 } from './workspace';
 import './styles.css';
 
@@ -64,6 +67,11 @@ export default function App() {
   const [loadingFollowUp, setLoadingFollowUp] = useState(false);
   const [importFeedback, setImportFeedback] = useState('');
   const [generatedProfile, setGeneratedProfile] = useState<SavedProfile | null>(null);
+  const [profileHistory, setProfileHistory] = useState<ProfileHistory>({
+    currentProfileId: null,
+    versions: []
+  });
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const [generatingProfile, setGeneratingProfile] = useState(false);
   const [reflectionSession, setReflectionSession] = useState<ReflectionSession>(emptyReflectionSession);
   const [chatInput, setChatInput] = useState('');
@@ -91,7 +99,10 @@ export default function App() {
       const handle = await picker();
       const next = await handleWorkspacePicked(appState, handle);
       const metadata = await loadWorkspaceMetadata(handle);
-      const profile = await loadLatestProfile(handle);
+      const history = await ensureProfileHistory(handle as BrowserDirectoryHandle & {
+        getFileHandle: NonNullable<BrowserDirectoryHandle['getFileHandle']>;
+      });
+      const profile = history.versions.find((item) => item.id === history.currentProfileId) ?? null;
       const savedReflection = await loadReflectionSession(handle);
       const resumedStep = next.step === 'onboarding'
         ? 'onboarding'
@@ -108,6 +119,8 @@ export default function App() {
       setOnboardingAnswer(currentAnswer?.answer ?? '');
       setFollowUpPrompt(currentAnswer?.followUpPrompt ?? '');
       setGeneratedProfile(profile);
+      setProfileHistory(history);
+      setSelectedProfileId(history.currentProfileId);
       setReflectionSession(savedReflection ?? emptyReflectionSession);
     } catch {
       setAppState((current) => ({
@@ -266,8 +279,11 @@ export default function App() {
         profile: profile.profile,
         metadata: profile.metadata
       };
-      await saveGeneratedProfile(workspaceHandle, savedProfile);
-      setGeneratedProfile(savedProfile);
+      const savedVersion = await saveGeneratedProfile(workspaceHandle, savedProfile);
+      const history = await loadProfileHistory(workspaceHandle);
+      setGeneratedProfile(savedVersion);
+      setProfileHistory(history);
+      setSelectedProfileId(savedVersion.id);
       setFollowUpPrompt('');
       setReflectionSession(emptyReflectionSession);
       setGeneratingProfile(false);
@@ -284,6 +300,26 @@ export default function App() {
     }
 
     setAppState((current) => ({ ...current, step: 'profile' }));
+  }
+
+  async function beginNewReflection() {
+    if (appState.workspace.handle?.getFileHandle) {
+      await startNewOnboardingSession(appState.workspace.handle as BrowserDirectoryHandle & {
+        getFileHandle: NonNullable<BrowserDirectoryHandle['getFileHandle']>;
+      });
+    }
+    setCurrentQuestionIndex(0);
+    setOnboardingAnswer('');
+    setFollowUpPrompt('');
+    setAppState((current) => ({
+      ...current,
+      step: 'onboarding',
+      onboardingSession: {
+        currentStep: 0,
+        completed: false,
+        answers: []
+      }
+    }));
   }
 
   async function continueToChat() {
@@ -394,6 +430,10 @@ export default function App() {
           importFeedback,
           fileInputRef,
           generatedProfile,
+          profileHistory,
+          selectedProfileId,
+          setSelectedProfileId,
+          beginNewReflection,
           generatingProfile,
           reflectionSession,
           setReflectionSession,
@@ -430,6 +470,10 @@ function renderStep({
   importFeedback,
   fileInputRef,
   generatedProfile,
+  profileHistory,
+  selectedProfileId,
+  setSelectedProfileId,
+  beginNewReflection,
   generatingProfile,
   reflectionSession,
   setReflectionSession,
@@ -460,6 +504,10 @@ function renderStep({
   importFeedback: string;
   fileInputRef: React.MutableRefObject<HTMLInputElement | null>;
   generatedProfile: SavedProfile | null;
+  profileHistory: ProfileHistory;
+  selectedProfileId: string | null;
+  setSelectedProfileId: React.Dispatch<React.SetStateAction<string | null>>;
+  beginNewReflection: () => Promise<void>;
   generatingProfile: boolean;
   reflectionSession: ReflectionSession;
   setReflectionSession: React.Dispatch<React.SetStateAction<ReflectionSession>>;
@@ -702,6 +750,8 @@ function renderStep({
   }
 
   if (step === 'profile') {
+    const viewedProfile = profileHistory.versions.find((item) => item.id === selectedProfileId) ?? generatedProfile;
+    const viewingCurrent = selectedProfileId === profileHistory.currentProfileId;
     return (
       <Panel
         icon={<HeartHandshake />}
@@ -714,14 +764,42 @@ function renderStep({
             <LoaderCircle size={16} className="spin" /> 正在整理你刚才写的内容……
           </p>
         ) : null}
-        <article className="profile-preview">
-          <p>{generatedProfile?.profile ?? '你似乎在重新判断，哪些事情是自己真正想要的，哪些只是沿着惯性在做。现在还不用急着得出结论，先把那些反复出现的想法留住。'}</p>
+        <div className="profile-layout">
+          <article className="profile-preview">
+          {!viewingCurrent ? <p className="history-notice">你正在查看以前保存的画像。</p> : null}
+          <p>{viewedProfile?.profile ?? '你似乎在重新判断，哪些事情是自己真正想要的，哪些只是沿着惯性在做。现在还不用急着得出结论，先把那些反复出现的想法留住。'}</p>
           <div className="summary-grid">
-            <Info title="参考内容" text={generatedProfile ? `${generatedProfile.metadata.sources.length} 条来源` : '刚才写下的近况'} />
-            <Info title="生成方式" text={generatedProfile ? '先整理线索，再写画像' : '分两步整理'} />
-            <Info title="生成时间" text={generatedProfile ? new Date(generatedProfile.metadata.generatedAt).toLocaleString('zh-CN') : '刚刚'} />
+            <Info title="参考内容" text={viewedProfile ? `${viewedProfile.metadata.sources.length} 条来源` : '刚才写下的近况'} />
+            <Info title="生成方式" text={viewedProfile ? '先整理线索，再写画像' : '分两步整理'} />
+            <Info title="生成时间" text={viewedProfile ? new Date(viewedProfile.metadata.generatedAt).toLocaleString('zh-CN') : '刚刚'} />
           </div>
-        </article>
+          </article>
+          <aside className="profile-timeline" aria-label="画像时间线">
+            <div className="timeline-heading">
+              <strong>画像时间线</strong>
+              <span>{profileHistory.versions.length} 个版本</span>
+            </div>
+            {profileHistory.versions.map((version) => (
+              <button
+                type="button"
+                className={version.id === selectedProfileId ? 'timeline-item active' : 'timeline-item'}
+                key={version.id}
+                onClick={() => setSelectedProfileId(version.id)}
+              >
+                <span>{new Date(version.metadata.generatedAt).toLocaleDateString('zh-CN')}</span>
+                <small>{version.metadata.sources.length} 条来源{version.id === profileHistory.currentProfileId ? ' · 当前' : ''}</small>
+              </button>
+            ))}
+            {!viewingCurrent && profileHistory.currentProfileId ? (
+              <button className="secondary-action" onClick={() => setSelectedProfileId(profileHistory.currentProfileId)}>
+                回到当前画像
+              </button>
+            ) : null}
+            <button className="secondary-action" onClick={() => void beginNewReflection()}>
+              开始新的六问复盘
+            </button>
+          </aside>
+        </div>
         <label className="large-answer">
           哪里说偏了？还想补充什么？
           <textarea

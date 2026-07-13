@@ -180,6 +180,7 @@ describe('first-run flow shell', () => {
 
     await answerGuidedQuestions(user);
     await waitFor(() => expect(screen.getByText(/你最近像是在努力把生活重新整理出一点秩序/)).toBeInTheDocument());
+    expect(screen.getByText('1 个版本')).toBeInTheDocument();
     expect(screen.getByLabelText(/哪里说偏了/)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /保存补充，继续聊/ }));
@@ -246,6 +247,27 @@ describe('first-run flow shell', () => {
     await waitFor(() => expect(screen.getByText(/API Key 无效/)).toBeInTheDocument());
 
     expect(screen.getByRole('button', { name: /连接好了，继续/ })).toBeDisabled();
+  });
+
+  it('starts another reflection round and keeps both profile versions', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole('button', { name: /^开始$/ }));
+    await user.click(screen.getByRole('button', { name: /^选择文件夹$/ }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: /连接 DeepSeek/ })).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: /^测试连接$/ }));
+    await waitFor(() => expect(screen.getByText(/连接成功/)).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: /连接好了，继续/ }));
+    await user.click(screen.getByRole('button', { name: /暂时没有/ }));
+    await answerGuidedQuestions(user);
+    await waitFor(() => expect(screen.getByText('1 个版本')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: /开始新的六问复盘/ }));
+    expect(screen.getByText(/第 1 题，共 6 题/)).toBeInTheDocument();
+    await answerGuidedQuestions(user);
+
+    await waitFor(() => expect(screen.getByText('2 个版本')).toBeInTheDocument());
   });
 
   it('saves profile feedback and restores the conversation when the workspace is reopened', async () => {

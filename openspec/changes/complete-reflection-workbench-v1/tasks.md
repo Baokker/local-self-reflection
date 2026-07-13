@@ -9,10 +9,10 @@
 
 ## 2. Profile History
 
-- [ ] 2.1 Add immutable profile version files and a profile manifest.
-- [ ] 2.2 Migrate the existing current profile into history without deleting it.
-- [ ] 2.3 Build a chronological profile timeline and older-version review state.
-- [ ] 2.4 Add no-overwrite profile-history tests and commit the change.
+- [x] 2.1 Add immutable profile version files and a profile manifest.
+- [x] 2.2 Migrate the existing current profile into history without deleting it.
+- [x] 2.3 Build a chronological profile timeline and older-version review state.
+- [x] 2.4 Add no-overwrite profile-history tests and commit the change.
 
 ## 3. Multiple Chat Sessions
 

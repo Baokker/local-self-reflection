@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ensureProfileHistory,
   loadLatestProfile,
+  loadProfileHistory,
   saveGeneratedProfile
 } from './workspace';
 
@@ -68,5 +70,55 @@ describe('profile persistence', () => {
     const latest = await loadLatestProfile(root);
     expect(latest?.profile).toContain('阶段性自我画像');
     expect(latest?.metadata.sources).toEqual(['note.md', 'onboarding:q1']);
+  });
+
+  it('keeps every generated profile as a separate immutable version', async () => {
+    const root = new MemoryDirectoryHandle('root');
+
+    await saveGeneratedProfile(root, {
+      profile: '第一份画像',
+      metadata: {
+        sources: ['first.md'],
+        generatedAt: '2026-06-17T00:00:00.000Z',
+        pipeline: 'bounded-profile-v1'
+      }
+    });
+    await saveGeneratedProfile(root, {
+      profile: '第二份画像',
+      metadata: {
+        sources: ['second.md'],
+        generatedAt: '2026-07-13T00:00:00.000Z',
+        pipeline: 'bounded-profile-v1'
+      }
+    });
+
+    const history = await loadProfileHistory(root);
+    expect(history.versions.map((version) => version.profile)).toEqual(['第二份画像', '第一份画像']);
+    expect(history.currentProfileId).toBe(history.versions[0]?.id);
+    expect((await loadLatestProfile(root))?.profile).toBe('第二份画像');
+  });
+
+  it('migrates the legacy current profile without changing or deleting it', async () => {
+    const root = new MemoryDirectoryHandle('root');
+    const workspace = await root.getDirectoryHandle('ai-self-analysis', { create: true });
+    const profiles = await workspace.getDirectoryHandle('profiles', { create: true });
+    const legacyFile = await profiles.getFileHandle('current-self-profile.json', { create: true });
+    const legacyContent = JSON.stringify({
+      profile: '原来的画像',
+      metadata: {
+        sources: ['old-note.md'],
+        generatedAt: '2026-05-01T00:00:00.000Z',
+        pipeline: 'bounded-profile-v1'
+      }
+    });
+    const writable = await legacyFile.createWritable();
+    await writable.write(legacyContent);
+    await writable.close();
+
+    const history = await ensureProfileHistory(root);
+
+    expect(history.versions).toHaveLength(1);
+    expect(history.versions[0]?.profile).toBe('原来的画像');
+    await expect((await legacyFile.getFile()).text()).resolves.toBe(legacyContent);
   });
 });
