@@ -8,10 +8,12 @@ import {
   MessageCircle,
   NotebookText,
   ShieldCheck,
-  Upload
+  Upload,
+  ExternalLink
 } from 'lucide-react';
 import { createInitialAppState, handleWorkspacePicked, type AppState, type Step } from './app-state';
 import { buildProfilePipeline } from './analysis';
+import { findNextQuestionIndex, REFLECTION_QUESTIONS } from './onboarding';
 import {
   DEFAULT_DEEPSEEK_BASE_URL,
   DEFAULT_DEEPSEEK_MODEL,
@@ -31,7 +33,8 @@ import {
   type ReflectionMessage,
   type ReflectionSession,
   type SavedProfile,
-  type WorkspaceMetadata
+  type WorkspaceMetadata,
+  type OnboardingAnswerRecord
 } from './workspace';
 import './styles.css';
 
@@ -55,6 +58,7 @@ export default function App() {
   const [modelStatus, setModelStatus] = useState<ModelConnectionResult | null>(null);
   const [testingModel, setTestingModel] = useState(false);
   const [workspaceMetadata, setWorkspaceMetadata] = useState<WorkspaceMetadata>({ materials: [] });
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [onboardingAnswer, setOnboardingAnswer] = useState('');
   const [followUpPrompt, setFollowUpPrompt] = useState('');
   const [loadingFollowUp, setLoadingFollowUp] = useState(false);
@@ -98,7 +102,11 @@ export default function App() {
             : next.step;
       setAppState({ ...next, step: resumedStep });
       setWorkspaceMetadata(metadata);
-      setOnboardingAnswer(next.onboardingSession?.answers.at(-1)?.answer ?? '');
+      const questionIndex = findNextQuestionIndex(next.onboardingSession?.answers ?? []);
+      const currentAnswer = next.onboardingSession?.answers.find((item) => item.stepIndex === questionIndex + 1);
+      setCurrentQuestionIndex(questionIndex);
+      setOnboardingAnswer(currentAnswer?.answer ?? '');
+      setFollowUpPrompt(currentAnswer?.followUpPrompt ?? '');
       setGeneratedProfile(profile);
       setReflectionSession(savedReflection ?? emptyReflectionSession);
     } catch {
@@ -121,25 +129,30 @@ export default function App() {
   }
 
   async function requestFollowUpPrompt() {
-    if (!onboardingAnswer.trim()) return;
+    if (!onboardingAnswer.trim() || followUpPrompt) return;
+    const currentQuestion = REFLECTION_QUESTIONS[currentQuestionIndex];
+    let prompt = '';
     if (!modelReady) {
-      setFollowUpPrompt('最近哪一个具体时刻，让你最明显地感觉到这件事？');
-      return;
+      prompt = '最近哪一个具体时刻，让你最明显地感觉到这件事？';
+    } else {
+      setLoadingFollowUp(true);
+      try {
+        const reply = await requestModelText(appState.modelConfig, [
+          '请读完用户的回答，只问一个问题，帮他把刚才的话说得更具体。',
+          '只写一句。不要评价，不要安慰，不要连续追问，也不要做心理诊断。',
+          `原问题：${currentQuestion.prompt}`,
+          `用户回答：${onboardingAnswer}`
+        ]);
+        prompt = reply.trim();
+      } catch {
+        prompt = '最近哪一个具体时刻，让你最明显地感觉到这件事？';
+      } finally {
+        setLoadingFollowUp(false);
+      }
     }
 
-    setLoadingFollowUp(true);
-    try {
-      const reply = await requestModelText(appState.modelConfig, [
-        '请读完用户的回答，只问一个问题，帮他把刚才的话说得更具体。',
-        '只写一句。不要评价，不要安慰，不要连续追问，也不要做心理诊断。',
-        `用户回答：${onboardingAnswer}`
-      ]);
-      setFollowUpPrompt(reply.trim());
-    } catch {
-      setFollowUpPrompt('最近哪一个具体时刻，让你最明显地感觉到这件事？');
-    } finally {
-      setLoadingFollowUp(false);
-    }
+    setFollowUpPrompt(prompt);
+    await persistOnboardingAnswer(currentQuestionIndex, onboardingAnswer, prompt, false);
   }
 
   async function triggerImport(files: FileList | null) {
@@ -158,17 +171,74 @@ export default function App() {
     setImportFeedback(`已经复制了 ${importedNames.length} 个文件：${importedNames.join('、')}`);
   }
 
+  function answerAt(index: number, answers = appState.onboardingSession?.answers ?? []) {
+    return answers.find((item) => item.stepIndex === index + 1);
+  }
+
+  async function persistOnboardingAnswer(
+    questionIndex: number,
+    answer: string,
+    savedFollowUp: string,
+    completed: boolean
+  ) {
+    const question = REFLECTION_QUESTIONS[questionIndex];
+    const record: OnboardingAnswerRecord = {
+      questionId: question.id,
+      question: question.prompt,
+      answer: answer.trim(),
+      stepIndex: questionIndex + 1,
+      followUpPrompt: savedFollowUp || undefined
+    };
+    const previousAnswers = appState.onboardingSession?.answers ?? [];
+    const nextAnswers = [...previousAnswers.filter((item) => item.stepIndex !== record.stepIndex), record]
+      .sort((left, right) => left.stepIndex - right.stepIndex);
+
+    if (appState.workspace.handle?.getFileHandle) {
+      await saveOnboardingAnswer(appState.workspace.handle as BrowserDirectoryHandle & {
+        getFileHandle: NonNullable<BrowserDirectoryHandle['getFileHandle']>;
+      }, { ...record, completed });
+    }
+    setAppState((current) => ({
+      ...current,
+      onboardingSession: {
+        currentStep: record.stepIndex,
+        completed,
+        answers: nextAnswers
+      }
+    }));
+    return nextAnswers;
+  }
+
+  function openQuestion(index: number, answers = appState.onboardingSession?.answers ?? []) {
+    const record = answerAt(index, answers);
+    setCurrentQuestionIndex(index);
+    setOnboardingAnswer(record?.answer ?? '');
+    setFollowUpPrompt(record?.followUpPrompt ?? '');
+  }
+
+  async function goToPreviousQuestion() {
+    const answers = await persistOnboardingAnswer(currentQuestionIndex, onboardingAnswer, followUpPrompt, false);
+    openQuestion(Math.max(0, currentQuestionIndex - 1), answers);
+  }
+
   async function continueOnboarding() {
+    const isLastQuestion = currentQuestionIndex === REFLECTION_QUESTIONS.length - 1;
+    const answers = await persistOnboardingAnswer(
+      currentQuestionIndex,
+      onboardingAnswer,
+      followUpPrompt,
+      isLastQuestion
+    );
+
+    if (!isLastQuestion) {
+      openQuestion(currentQuestionIndex + 1, answers);
+      return;
+    }
+
     if (appState.workspace.handle?.getFileHandle) {
       const workspaceHandle = appState.workspace.handle as BrowserDirectoryHandle & {
         getFileHandle: NonNullable<BrowserDirectoryHandle['getFileHandle']>;
       };
-      await saveOnboardingAnswer(workspaceHandle, {
-        question: '最近反复想到的是什么？',
-        answer: onboardingAnswer,
-        stepIndex: 1,
-        completed: false
-      });
       const materials = await Promise.all(
         workspaceMetadata.materials.map(async (material) => {
           const materialsDir = await workspaceHandle.getDirectoryHandle('ai-self-analysis');
@@ -189,24 +259,13 @@ export default function App() {
           complete: async ({ prompt }) => requestModelText(appState.modelConfig, [prompt], 0.6, 800)
         },
         materials,
-        answers: [
-          {
-            question: '最近反复想到的是什么？',
-            answer: onboardingAnswer
-          }
-        ]
+        answers: answers.map(({ question, answer }) => ({ question, answer }))
       });
 
       const savedProfile: SavedProfile = {
         profile: profile.profile,
         metadata: profile.metadata
       };
-      await saveOnboardingAnswer(workspaceHandle, {
-        question: '最近反复想到的是什么？',
-        answer: onboardingAnswer,
-        stepIndex: 1,
-        completed: true
-      });
       await saveGeneratedProfile(workspaceHandle, savedProfile);
       setGeneratedProfile(savedProfile);
       setFollowUpPrompt('');
@@ -215,15 +274,9 @@ export default function App() {
       setAppState((current) => ({
         ...current,
         onboardingSession: {
-          currentStep: 1,
+          currentStep: REFLECTION_QUESTIONS.length,
           completed: true,
-          answers: [
-            {
-              question: '最近反复想到的是什么？',
-              answer: onboardingAnswer,
-              stepIndex: 1
-            }
-          ]
+          answers
         },
         step: 'profile'
       }));
@@ -329,11 +382,13 @@ export default function App() {
           testingModel,
           workspacePicked,
           workspaceMetadata,
+          currentQuestionIndex,
           onboardingAnswer,
           setOnboardingAnswer,
           followUpPrompt,
           loadingFollowUp,
           requestFollowUpPrompt,
+          goToPreviousQuestion,
           continueOnboarding,
           triggerImport,
           importFeedback,
@@ -363,11 +418,13 @@ function renderStep({
   testingModel,
   workspacePicked,
   workspaceMetadata,
+  currentQuestionIndex,
   onboardingAnswer,
   setOnboardingAnswer,
   followUpPrompt,
   loadingFollowUp,
   requestFollowUpPrompt,
+  goToPreviousQuestion,
   continueOnboarding,
   triggerImport,
   importFeedback,
@@ -391,11 +448,13 @@ function renderStep({
   testingModel: boolean;
   workspacePicked: boolean;
   workspaceMetadata: WorkspaceMetadata;
+  currentQuestionIndex: number;
   onboardingAnswer: string;
   setOnboardingAnswer: React.Dispatch<React.SetStateAction<string>>;
   followUpPrompt: string;
   loadingFollowUp: boolean;
   requestFollowUpPrompt: () => Promise<void>;
+  goToPreviousQuestion: () => Promise<void>;
   continueOnboarding: () => Promise<void>;
   triggerImport: (files: FileList | null) => Promise<void>;
   importFeedback: string;
@@ -597,28 +656,45 @@ function renderStep({
   }
 
   if (step === 'onboarding') {
+    const question = REFLECTION_QUESTIONS[currentQuestionIndex];
+    const isLastQuestion = currentQuestionIndex === REFLECTION_QUESTIONS.length - 1;
     return (
       <Panel
         icon={<NotebookText />}
-        kicker="先回答一个问题"
-        title="最近什么事总在脑子里打转？"
-        body="不用写完整，也不用急着解释清楚。想到哪写到哪，这段内容会先保存在本地。"
+        kicker={`第 ${currentQuestionIndex + 1} 题，共 ${REFLECTION_QUESTIONS.length} 题`}
+        title={question.title}
+        body="不用写得完整。先把想到的内容留下，每一题都会保存在本地，下次可以接着写。"
       >
+        <div className="question-progress" aria-label="回答进度">
+          <span style={{ width: `${((currentQuestionIndex + 1) / REFLECTION_QUESTIONS.length) * 100}%` }} />
+        </div>
         <label className="large-answer">
-          最近反复想到的是什么？
+          {question.prompt}
           <textarea
             placeholder="想到哪写到哪。用语音输入也可以。"
             value={onboardingAnswer}
             onChange={(event) => setOnboardingAnswer(event.target.value)}
           />
         </label>
-        {followUpPrompt ? <div className="follow-up-box">{followUpPrompt}</div> : null}
+        <div className="voice-input-note">
+          <div>
+            <strong>说出来也可以</strong>
+            <p>在输入框里使用系统语音输入，或者安装豆包输入法。这里不会申请麦克风权限。</p>
+          </div>
+          <a href="https://shurufa.doubao.com/" target="_blank" rel="noreferrer">
+            豆包输入法 <ExternalLink size={15} />
+          </a>
+        </div>
+        {followUpPrompt ? <div className="follow-up-box"><strong>可以再想想：</strong>{followUpPrompt}</div> : null}
         <div className="actions-row">
-          <button className="secondary-action" onClick={() => void requestFollowUpPrompt()} disabled={!onboardingAnswer.trim() || loadingFollowUp}>
-            {loadingFollowUp ? '正在想一个追问' : '帮我再问一句'}
+          <button className="secondary-action" onClick={() => void goToPreviousQuestion()} disabled={currentQuestionIndex === 0}>
+            上一题
+          </button>
+          <button className="secondary-action" onClick={() => void requestFollowUpPrompt()} disabled={!onboardingAnswer.trim() || loadingFollowUp || Boolean(followUpPrompt)}>
+            {loadingFollowUp ? '正在想一个追问' : followUpPrompt ? '这题已经追问过了' : '帮我再问一句'}
           </button>
           <button className="primary-action" onClick={() => void continueOnboarding()} disabled={!onboardingAnswer.trim()}>
-            保存，生成画像
+            {generatingProfile ? '正在生成画像' : isLastQuestion ? '保存，生成画像' : '保存，下一题'}
           </button>
         </div>
       </Panel>

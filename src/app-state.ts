@@ -1,5 +1,10 @@
 import { loadStoredModelConfig, type ModelConfig } from './model';
-import { createWorkspaceStructure, loadOnboardingSession, WORKSPACE_DIR } from './workspace';
+import {
+  createWorkspaceStructure,
+  loadOnboardingSession,
+  WORKSPACE_DIR,
+  type OnboardingSession
+} from './workspace';
 
 export type Step = 'welcome' | 'workspace' | 'model' | 'import' | 'onboarding' | 'profile' | 'chat';
 
@@ -31,15 +36,7 @@ export type AppState = {
   step: Step;
   workspace: WorkspaceState;
   modelConfig: ModelConfig;
-  onboardingSession: {
-    currentStep: number;
-    completed: boolean;
-    answers: Array<{
-      question: string;
-      answer: string;
-      stepIndex: number;
-    }>;
-  } | null;
+  onboardingSession: OnboardingSession | null;
 };
 
 export function createInitialAppState(): AppState {

@@ -1,11 +1,11 @@
 ## 1. Guided Reflection
 
-- [ ] 1.1 Define the six fixed Simplified Chinese reflection questions.
-- [ ] 1.2 Update onboarding persistence and resume logic for six answers.
-- [ ] 1.3 Build previous, next, progress, and completion states in the onboarding UI.
-- [ ] 1.4 Limit AI follow-up to one request per question.
-- [ ] 1.5 Add concise voice-input guidance and the official Doubao input-method link.
-- [ ] 1.6 Add focused onboarding tests and commit the guided-reflection change.
+- [x] 1.1 Define the six fixed Simplified Chinese reflection questions.
+- [x] 1.2 Update onboarding persistence and resume logic for six answers.
+- [x] 1.3 Build previous, next, progress, and completion states in the onboarding UI.
+- [x] 1.4 Limit AI follow-up to one request per question.
+- [x] 1.5 Add concise voice-input guidance and the official Doubao input-method link.
+- [x] 1.6 Add focused onboarding tests and commit the guided-reflection change.
 
 ## 2. Profile History
 

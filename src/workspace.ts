@@ -32,9 +32,11 @@ export type WorkspaceMetadata = {
 };
 
 export type OnboardingAnswerRecord = {
+  questionId?: string;
   question: string;
   answer: string;
   stepIndex: number;
+  followUpPrompt?: string;
 };
 
 export type OnboardingSession = {
@@ -139,9 +141,11 @@ export async function saveOnboardingAnswer(
 
   const nextAnswers = existing.answers.filter((item) => item.stepIndex !== input.stepIndex);
   nextAnswers.push({
+    questionId: input.questionId,
     question: input.question,
     answer: input.answer,
-    stepIndex: input.stepIndex
+    stepIndex: input.stepIndex,
+    followUpPrompt: input.followUpPrompt
   });
   nextAnswers.sort((left, right) => left.stepIndex - right.stepIndex);
 

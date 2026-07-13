@@ -51,6 +51,30 @@ class MemoryFileHandle {
   }
 }
 
+const guidedAnswers = [
+  '我最近总是在想，怎样才能过一种更贴近自己的生活。',
+  '反复处理没有意义的琐事最消耗我。',
+  '安静写东西的时候，我会觉得很投入。',
+  '我在稳定的安排和新的可能之间犹豫。',
+  '我想先调整每天的时间分配。',
+  '我希望一个月后能有更稳定的生活节奏。'
+];
+
+async function answerGuidedQuestions(
+  user: ReturnType<typeof userEvent.setup>,
+  startIndex = 0
+) {
+  for (let index = startIndex; index < guidedAnswers.length; index += 1) {
+    const textarea = screen.getByPlaceholderText(/想到哪写到哪/);
+    if (!textarea.getAttribute('value') && !(textarea as HTMLTextAreaElement).value) {
+      await user.type(textarea, guidedAnswers[index]);
+    }
+    await user.click(screen.getByRole('button', {
+      name: index === guidedAnswers.length - 1 ? /保存，生成画像/ : /保存，下一题/
+    }));
+  }
+}
+
 describe('first-run flow shell', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -154,8 +178,7 @@ describe('first-run flow shell', () => {
     await user.click(screen.getByRole('button', { name: /暂时没有/ }));
     expect(screen.getByRole('heading', { name: /最近什么事/ })).toBeInTheDocument();
 
-    await user.type(screen.getByPlaceholderText(/想到哪写到哪/), '我最近总是在想，怎样才能过一种更贴近自己的生活。');
-    await user.click(screen.getByRole('button', { name: /保存，生成画像/ }));
+    await answerGuidedQuestions(user);
     await waitFor(() => expect(screen.getByText(/你最近像是在努力把生活重新整理出一点秩序/)).toBeInTheDocument());
     expect(screen.getByLabelText(/哪里说偏了/)).toBeInTheDocument();
 
@@ -183,8 +206,10 @@ describe('first-run flow shell', () => {
     await waitFor(() =>
       expect(screen.getByText(/如果把这件事说得更具体一点，最近最卡住你的那一刻是什么/)).toBeInTheDocument()
     );
+    expect(screen.getByRole('button', { name: /这题已经追问过了/ })).toBeDisabled();
 
-    await user.click(screen.getByRole('button', { name: /保存，生成画像/ }));
+    await user.click(screen.getByRole('button', { name: /保存，下一题/ }));
+    await answerGuidedQuestions(user, 1);
     await waitFor(() => expect(screen.getByRole('heading', { name: /这份画像只代表现在/ })).toBeInTheDocument());
 
     await user.click(screen.getByRole('button', { name: /保存补充，继续聊/ }));
@@ -236,8 +261,7 @@ describe('first-run flow shell', () => {
     await waitFor(() => expect(screen.getByText(/连接成功/)).toBeInTheDocument());
     await user.click(screen.getByRole('button', { name: /连接好了，继续/ }));
     await user.click(screen.getByRole('button', { name: /暂时没有/ }));
-    await user.type(screen.getByPlaceholderText(/随便写几句|想到哪写到哪/), '我最近总想换一种生活方式。');
-    await user.click(screen.getByRole('button', { name: /保存，生成画像/ }));
+    await answerGuidedQuestions(user);
     await waitFor(() => expect(screen.getByRole('heading', { name: /这份画像只代表现在/ })).toBeInTheDocument());
 
     await user.type(screen.getByLabelText(/哪里说偏了/), '我不是想放弃，只是想换一种走法。');

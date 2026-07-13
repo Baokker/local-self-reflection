@@ -129,9 +129,11 @@ describe('workspace safety', () => {
     const root = new MemoryDirectoryHandle('root');
 
     await saveOnboardingAnswer(root, {
+      questionId: 'recurring-thought',
       question: '最近有什么事情总是在心里绕回来？',
       answer: '我总是在想自己到底更想过什么样的生活。',
       stepIndex: 1,
+      followUpPrompt: '最近哪一个具体时刻，让你最明显地感觉到这件事？',
       completed: false
     });
 
@@ -140,6 +142,8 @@ describe('workspace safety', () => {
     expect(session?.answers[0]?.answer).toMatch(/更想过什么样的生活/);
     expect(session?.currentStep).toBe(1);
     expect(session?.completed).toBe(false);
+    expect(session?.answers[0]?.questionId).toBe('recurring-thought');
+    expect(session?.answers[0]?.followUpPrompt).toMatch(/具体时刻/);
   });
 
   it('keeps pre-existing user files outside ai-self-analysis unchanged', async () => {
