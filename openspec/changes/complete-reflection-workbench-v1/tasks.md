@@ -37,10 +37,10 @@
 
 ## 6. Static Deployment
 
-- [ ] 6.1 Add configurable Vite base-path support and a GitHub Pages workflow.
-- [ ] 6.2 Verify a real DeepSeek request from the browser using the locally provided key.
-- [ ] 6.3 Document supported browsers, provider-data disclosure, and any CORS limitation.
-- [ ] 6.4 Run desktop and mobile browser verification and commit deployment readiness.
+- [x] 6.1 Add configurable Vite base-path support and a GitHub Pages workflow.
+- [x] 6.2 Verify a real DeepSeek request from the browser using the locally provided key.
+- [x] 6.3 Document supported browsers, provider-data disclosure, and any CORS limitation.
+- [x] 6.4 Run desktop and mobile browser verification and commit deployment readiness.
 
 ## 7. Final Verification
 
