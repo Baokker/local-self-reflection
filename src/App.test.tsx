@@ -161,7 +161,7 @@ describe('first-run flow shell', () => {
   it('starts in Simplified Chinese with scope and privacy copy', () => {
     render(<App />);
 
-    expect(screen.getByRole('heading', { name: /AI 自我复盘工作台/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '见己' })).toBeInTheDocument();
     expect(screen.getByText(/不做心理诊断，也不能代替专业帮助/)).toBeInTheDocument();
     expect(screen.getByText(/选一个本地文件夹/)).toBeInTheDocument();
   });

@@ -611,7 +611,7 @@ export default function App() {
       <aside className="side-panel" aria-label="当前步骤">
         <div className="brand-mark">AI</div>
         <p className="eyebrow">资料留在本地</p>
-        <h1>AI 自我复盘工作台</h1>
+        <h1>见己</h1>
         <p className="side-copy">
           把旧笔记、最近的想法和每次对话放在同一个本地文件夹里。下次打开，还能从上次停下的地方继续。
         </p>
