@@ -188,7 +188,7 @@ describe('first-run flow shell', () => {
     await user.upload(fileInput, new File(['最近工作让我很疲惫，我想换一种生活节奏。'], '工作笔记.md', { type: 'text/markdown' }));
     await waitFor(() => expect(screen.getByText(/已经复制了 1 个文件/)).toBeInTheDocument());
 
-    await user.click(screen.getByRole('button', { name: /暂时没有/ }));
+    await user.click(screen.getByRole('button', { name: /开始写/ }));
     expect(screen.getByRole('heading', { name: /最近什么事/ })).toBeInTheDocument();
 
     await answerGuidedQuestions(user);

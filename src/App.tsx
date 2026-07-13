@@ -844,7 +844,7 @@ function renderStep({
             选择文件
           </button>
           <button className="primary-action" onClick={() => setAppState((current) => ({ ...current, step: 'onboarding' }))}>
-            暂时没有，开始写
+            {workspaceMetadata.materials.length ? '材料放好了，开始写' : '暂时没有，开始写'}
           </button>
         </div>
       </Panel>
@@ -971,11 +971,11 @@ function renderStep({
       icon={<MessageCircle />}
       kicker={reflectionSession.messages.length ? '上次的对话还在' : '从画像接着聊'}
       title="继续对话"
-      body="这里会参考当前画像、你的补充和最近几轮对话。它不会自行翻遍整个文件夹。"
+      body="提问时，它会从本地材料里找几段相关内容，再参考当前画像、你的补充和最近几轮对话。它不会自行翻遍整个文件夹。"
     >
       <div className="chat-workbench">
         <aside className="context-panel" aria-label="本次对话参考内容">
-          <strong>固定复盘</strong>
+          <strong>整理成报告</strong>
           <div className="report-actions">
             <button className="secondary-action" onClick={() => void generateReport('stage-review')} disabled={Boolean(generatingReport)}>
               <ClipboardList size={16} />
@@ -1031,7 +1031,7 @@ function renderStep({
             <li>{materialIndex.chunks.length} 段本地材料索引</li>
             <li>{reflectionSession.messages.length} 条已保存对话</li>
           </ul>
-          <p>材料只在你明确生成画像或发起对话时发送给所配置的模型服务。</p>
+          <p>材料只在你明确生成画像、发送消息或生成报告时，才会发给所配置的模型服务。</p>
         </aside>
 
         <section className="conversation" aria-label="对话记录">
