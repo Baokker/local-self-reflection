@@ -312,7 +312,8 @@ describe('first-run flow shell', () => {
     await answerGuidedQuestions(user);
     await waitFor(() => expect(screen.getByText('1 个版本')).toBeInTheDocument());
 
-    await user.click(screen.getByRole('button', { name: /开始新的六问复盘/ }));
+    await user.click(screen.getByRole('button', { name: /保存补充，继续聊/ }));
+    await user.click(screen.getByRole('button', { name: /开始新复盘/ }));
     expect(screen.getByText(/第 1 题，共 6 题/)).toBeInTheDocument();
     await answerGuidedQuestions(user);
 

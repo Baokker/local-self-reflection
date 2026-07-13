@@ -8,9 +8,9 @@
 
 ## 2. Profile Renewal
 
-- [ ] 2.1 Expose new-reflection actions from profiles and chats.
-- [ ] 2.2 Preserve earlier profile versions through later reflection rounds.
-- [ ] 2.3 Add later-profile flow tests and commit the change.
+- [x] 2.1 Expose new-reflection actions from profiles and chats.
+- [x] 2.2 Preserve earlier profile versions through later reflection rounds.
+- [x] 2.3 Add later-profile flow tests and commit the change.
 
 ## 3. Chat Lifecycle Management
 

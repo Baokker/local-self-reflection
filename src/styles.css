@@ -679,6 +679,14 @@ textarea:focus {
   justify-content: flex-start;
 }
 
+.new-reflection-action {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+}
+
 .report-list button {
   display: flex;
   align-items: baseline;

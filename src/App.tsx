@@ -19,7 +19,8 @@ import {
   MessagesSquare,
   FileText,
   Settings,
-  Save
+  Save,
+  RefreshCcw
 } from 'lucide-react';
 import { createInitialAppState, handleWorkspacePicked, type AppState, type Step } from './app-state';
 import { buildProfilePipeline } from './analysis';
@@ -1134,6 +1135,10 @@ function renderStep({
     >
       <div className="chat-workbench">
         <aside className="context-panel" aria-label="本次对话参考内容">
+          <button className="secondary-action new-reflection-action" onClick={() => void beginNewReflection()}>
+            <RefreshCcw size={16} />开始新复盘
+          </button>
+          <div className="context-divider" />
           <strong>整理成报告</strong>
           <div className="report-actions">
             <button className="secondary-action" onClick={() => void generateReport('stage-review')} disabled={Boolean(generatingReport)}>
