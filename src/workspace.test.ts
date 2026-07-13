@@ -3,6 +3,7 @@ import {
   createWorkspaceStructure,
   importMaterialFile,
   loadLatestProfile,
+  loadMaterialIndex,
   loadOnboardingSession,
   loadReflectionSession,
   loadWorkspaceMetadata,
@@ -116,6 +117,9 @@ describe('workspace safety', () => {
     const metadata = await loadWorkspaceMetadata(root);
     expect(metadata.materials[0]?.originalName).toBe('note.md');
     expect(metadata.materials[0]?.storedName).toBe(result.storedName);
+    const index = await loadMaterialIndex(root);
+    expect(index.chunks[0]?.sourceName).toBe('note.md');
+    expect(index.chunks[0]?.text).toBe('原始内容');
   });
 
   it('rejects unsupported import types', async () => {

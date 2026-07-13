@@ -553,6 +553,15 @@ textarea:focus {
   white-space: pre-wrap;
 }
 
+.message-sources {
+  padding-top: 10px;
+  margin-top: 10px;
+  color: #6b604e;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 0.78rem;
+  border-top: 1px solid rgba(93, 83, 65, 0.14);
+}
+
 .prompt-action {
   justify-self: start;
 }

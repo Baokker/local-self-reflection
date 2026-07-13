@@ -1,3 +1,5 @@
+import { emptyMaterialIndex, indexMaterial, type MaterialIndex } from './retrieval';
+
 export const WORKSPACE_DIR = 'ai-self-analysis';
 export const WORKSPACE_SUBDIRECTORIES = ['materials', 'sessions', 'profiles', 'reports', 'index'] as const;
 export const SUPPORTED_IMPORT_EXTENSIONS = ['.md', '.txt', '.csv', '.json'] as const;
@@ -79,6 +81,7 @@ export type ReflectionMessage = {
   role: 'user' | 'assistant';
   content: string;
   createdAt: string;
+  sources?: string[];
 };
 
 export type ReflectionSession = {
@@ -142,10 +145,11 @@ export async function importMaterialFile(root: DirectoryWithFiles, file: File): 
   const workspace = (await createWorkspaceStructure(root)) as DirectoryWithFiles;
   const materials = (await workspace.getDirectoryHandle('materials', { create: true })) as DirectoryWithFiles;
   const storedName = uniqueMaterialName(file.name);
+  const content = await readFileText(file);
   safeWorkspacePath(['materials', storedName]);
   const target = await materials.getFileHandle(storedName, { create: true });
   const writable = await target.createWritable();
-  await writable.write(await readFileText(file));
+  await writable.write(content);
   await writable.close();
 
   const imported = {
@@ -158,6 +162,14 @@ export async function importMaterialFile(root: DirectoryWithFiles, file: File): 
   const metadata = await loadWorkspaceMetadata(root);
   metadata.materials.push(imported);
   await writeWorkspaceFile(root, ['index', 'materials.json'], JSON.stringify(metadata, null, 2));
+
+  const index = await loadMaterialIndex(root);
+  index.chunks = [
+    ...index.chunks.filter((chunk) => chunk.storedName !== storedName),
+    ...indexMaterial({ sourceName: file.name, storedName, text: content })
+  ];
+  index.updatedAt = new Date().toISOString();
+  await writeWorkspaceFile(root, ['index', 'material-chunks.json'], JSON.stringify(index, null, 2));
 
   return imported;
 }
@@ -172,6 +184,16 @@ export async function loadWorkspaceMetadata(root: DirectoryLike): Promise<Worksp
     return JSON.parse(existing) as WorkspaceMetadata;
   } catch {
     return { materials: [] };
+  }
+}
+
+export async function loadMaterialIndex(root: DirectoryLike): Promise<MaterialIndex> {
+  const existing = await readWorkspaceFile(root, ['index', 'material-chunks.json']);
+  if (!existing) return emptyMaterialIndex();
+  try {
+    return JSON.parse(existing) as MaterialIndex;
+  } catch {
+    return emptyMaterialIndex();
   }
 }
 
@@ -383,7 +405,15 @@ async function readFileText(file: File) {
   if ('text' in file && typeof file.text === 'function') {
     return file.text();
   }
-  return new TextDecoder().decode(await file.arrayBuffer());
+  if ('arrayBuffer' in file && typeof file.arrayBuffer === 'function') {
+    return new TextDecoder().decode(await file.arrayBuffer());
+  }
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file);
+  });
 }
 
 async function writeWorkspaceFile(root: DirectoryLike, segments: string[], content: string) {

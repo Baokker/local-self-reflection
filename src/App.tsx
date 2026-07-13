@@ -15,6 +15,7 @@ import {
 import { createInitialAppState, handleWorkspacePicked, type AppState, type Step } from './app-state';
 import { buildProfilePipeline } from './analysis';
 import { findNextQuestionIndex, REFLECTION_QUESTIONS } from './onboarding';
+import { emptyMaterialIndex, retrieveRelevantChunks, type MaterialIndex } from './retrieval';
 import {
   DEFAULT_DEEPSEEK_BASE_URL,
   DEFAULT_DEEPSEEK_MODEL,
@@ -28,6 +29,7 @@ import {
   ensureProfileHistory,
   loadProfileHistory,
   loadWorkspaceMetadata,
+  loadMaterialIndex,
   ensureChatWorkspace,
   createChatSession,
   activateChatSession,
@@ -75,6 +77,7 @@ export default function App() {
   const [modelStatus, setModelStatus] = useState<ModelConnectionResult | null>(null);
   const [testingModel, setTestingModel] = useState(false);
   const [workspaceMetadata, setWorkspaceMetadata] = useState<WorkspaceMetadata>({ materials: [] });
+  const [materialIndex, setMaterialIndex] = useState<MaterialIndex>(() => emptyMaterialIndex());
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [onboardingAnswer, setOnboardingAnswer] = useState('');
   const [followUpPrompt, setFollowUpPrompt] = useState('');
@@ -114,6 +117,7 @@ export default function App() {
       const handle = await picker();
       const next = await handleWorkspacePicked(appState, handle);
       const metadata = await loadWorkspaceMetadata(handle);
+      const localIndex = await loadMaterialIndex(handle);
       const history = await ensureProfileHistory(handle as BrowserDirectoryHandle & {
         getFileHandle: NonNullable<BrowserDirectoryHandle['getFileHandle']>;
       });
@@ -130,6 +134,7 @@ export default function App() {
             : next.step;
       setAppState({ ...next, step: resumedStep });
       setWorkspaceMetadata(metadata);
+      setMaterialIndex(localIndex);
       const questionIndex = findNextQuestionIndex(next.onboardingSession?.answers ?? []);
       const currentAnswer = next.onboardingSession?.answers.find((item) => item.stepIndex === questionIndex + 1);
       setCurrentQuestionIndex(questionIndex);
@@ -197,7 +202,9 @@ export default function App() {
       importedNames.push(imported.originalName);
     }
     const metadata = await loadWorkspaceMetadata(workspaceHandle);
+    const localIndex = await loadMaterialIndex(workspaceHandle);
     setWorkspaceMetadata(metadata);
+    setMaterialIndex(localIndex);
     setImportFeedback(`已经复制了 ${importedNames.length} 个文件：${importedNames.join('、')}`);
   }
 
@@ -374,16 +381,21 @@ export default function App() {
       createdAt: new Date().toISOString()
     };
     const messagesWithQuestion = [...reflectionSession.messages, userMessage];
+    const retrievedChunks = retrieveRelevantChunks(materialIndex, question);
+    const sourceNames = [...new Set(retrievedChunks.map((chunk) => chunk.sourceName))];
     setSendingChat(true);
     let reply = '';
     try {
       reply = await requestModelText(appState.modelConfig, [
-        '只根据下面给出的阶段画像、用户补充和最近对话回答问题。',
+        '只根据下面给出的阶段画像、用户补充、本地材料摘录和最近对话回答问题。',
         '说具体一点，少用套话。可以指出不确定之处，但不要做心理诊断，也不要假装读过未提供的材料。',
         `阶段性自我画像：\n${generatedProfile.profile}`,
         reflectionSession.profileSupplement
           ? `用户对画像的补充：\n${reflectionSession.profileSupplement}`
           : '',
+        retrievedChunks.length
+          ? `本地材料摘录：\n${retrievedChunks.map((chunk) => `【${chunk.sourceName}】\n${chunk.text}`).join('\n\n')}`
+          : '这次没有找到与问题直接匹配的本地材料摘录。',
         `最近对话：\n${messagesWithQuestion.slice(-6).map((message) => `${message.role === 'user' ? '用户' : 'AI'}：${message.content}`).join('\n')}`,
         `用户提问：${question}`
       ]);
@@ -394,7 +406,8 @@ export default function App() {
     const assistantMessage: ReflectionMessage = {
       role: 'assistant',
       content: reply.trim(),
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      sources: sourceNames
     };
     const nextSession = {
       ...reflectionSession,
@@ -482,6 +495,7 @@ export default function App() {
           testingModel,
           workspacePicked,
           workspaceMetadata,
+          materialIndex,
           currentQuestionIndex,
           onboardingAnswer,
           setOnboardingAnswer,
@@ -526,6 +540,7 @@ function renderStep({
   testingModel,
   workspacePicked,
   workspaceMetadata,
+  materialIndex,
   currentQuestionIndex,
   onboardingAnswer,
   setOnboardingAnswer,
@@ -564,6 +579,7 @@ function renderStep({
   testingModel: boolean;
   workspacePicked: boolean;
   workspaceMetadata: WorkspaceMetadata;
+  materialIndex: MaterialIndex;
   currentQuestionIndex: number;
   onboardingAnswer: string;
   setOnboardingAnswer: React.Dispatch<React.SetStateAction<string>>;
@@ -934,6 +950,7 @@ function renderStep({
             <li>阶段性画像</li>
             {reflectionSession.profileSupplement ? <li>你的补充</li> : null}
             <li>{generatedProfile?.metadata.sources.length ?? 0} 条画像来源</li>
+            <li>{materialIndex.chunks.length} 段本地材料索引</li>
             <li>{reflectionSession.messages.length} 条已保存对话</li>
           </ul>
           <p>材料只在你明确生成画像或发起对话时发送给所配置的模型服务。</p>
@@ -946,6 +963,11 @@ function renderStep({
                 <article className={`message ${message.role}`} key={`${message.createdAt}-${message.content}`}>
                   <span>{message.role === 'user' ? '你' : 'AI'}</span>
                   <p>{message.content}</p>
+                  {message.sources?.length ? (
+                    <div className="message-sources">
+                      参考：{message.sources.join('、')}
+                    </div>
+                  ) : null}
                 </article>
               ))}
             </div>

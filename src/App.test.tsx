@@ -175,6 +175,10 @@ describe('first-run flow shell', () => {
     await user.click(screen.getByRole('button', { name: /连接好了，继续/ }));
     expect(screen.getByRole('heading', { name: /有旧材料/ })).toBeInTheDocument();
 
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(fileInput, new File(['最近工作让我很疲惫，我想换一种生活节奏。'], '工作笔记.md', { type: 'text/markdown' }));
+    await waitFor(() => expect(screen.getByText(/已经复制了 1 个文件/)).toBeInTheDocument());
+
     await user.click(screen.getByRole('button', { name: /暂时没有/ }));
     expect(screen.getByRole('heading', { name: /最近什么事/ })).toBeInTheDocument();
 
@@ -185,6 +189,10 @@ describe('first-run flow shell', () => {
 
     await user.click(screen.getByRole('button', { name: /保存补充，继续聊/ }));
     expect(screen.getByRole('heading', { name: /继续对话/ })).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText(/稳定和自由/), '为什么工作让我疲惫？');
+    await user.click(screen.getByRole('button', { name: /发送/ }));
+    await waitFor(() => expect(screen.getByText(/参考：工作笔记.md/)).toBeInTheDocument());
   });
 
   it('offers a limited follow-up prompt and answers inside the chat workbench', async () => {

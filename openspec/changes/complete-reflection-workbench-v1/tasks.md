@@ -23,10 +23,10 @@
 
 ## 4. Local Material Retrieval
 
-- [ ] 4.1 Split imported text into bounded chunks and save a lexical index.
-- [ ] 4.2 Retrieve the highest-scoring chunks for each chat question.
-- [ ] 4.3 Send only bounded excerpts and show source file labels with answers.
-- [ ] 4.4 Add retrieval ranking and integration tests and commit the change.
+- [x] 4.1 Split imported text into bounded chunks and save a lexical index.
+- [x] 4.2 Retrieve the highest-scoring chunks for each chat question.
+- [x] 4.3 Send only bounded excerpts and show source file labels with answers.
+- [x] 4.4 Add retrieval ranking and integration tests and commit the change.
 
 ## 5. Fixed Reports
 
