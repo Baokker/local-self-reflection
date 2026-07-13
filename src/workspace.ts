@@ -91,11 +91,18 @@ export type ReflectionSession = {
   messages: ReflectionMessage[];
 };
 
+export type ChatContextSettings = {
+  profileId: string | null;
+  materialStoredNames: string[];
+  recentMessageLimit: number;
+};
+
 export type ChatSession = ReflectionSession & {
   id: string;
   title: string;
   createdAt: string;
   updatedAt: string;
+  context?: ChatContextSettings;
 };
 
 export type ChatManifestEntry = {
@@ -384,7 +391,7 @@ export async function ensureChatWorkspace(root: DirectoryWithFiles): Promise<Cha
 
 export async function createChatSession(
   root: DirectoryWithFiles,
-  input: { title?: string; profileSupplement?: string } = {}
+  input: { title?: string; profileSupplement?: string; context?: ChatContextSettings } = {}
 ): Promise<ChatWorkspace> {
   const manifest = await ensureChatManifest(root);
   const now = new Date().toISOString();
@@ -395,7 +402,8 @@ export async function createChatSession(
     profileSupplement: input.profileSupplement?.trim() || '',
     messages: [],
     createdAt: now,
-    updatedAt: now
+    updatedAt: now,
+    context: input.context
   };
   const entry = chatEntryFromSession(session);
 

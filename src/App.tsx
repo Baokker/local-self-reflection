@@ -31,6 +31,7 @@ import { buildProfilePipeline } from './analysis';
 import { findNextQuestionIndex, REFLECTION_QUESTIONS } from './onboarding';
 import { emptyMaterialIndex, retrieveRelevantChunks, type MaterialIndex } from './retrieval';
 import { buildReportPrompt, reportTitle, type ReflectionReport, type ReportType } from './reports';
+import { buildChatPrompts, filterMaterialIndex, resolveChatContext } from './chat-context';
 import {
   DEFAULT_DEEPSEEK_BASE_URL,
   DEFAULT_DEEPSEEK_MODEL,
@@ -64,7 +65,8 @@ import {
   type OnboardingAnswerRecord,
   type ProfileHistory,
   type ChatSession,
-  type ChatWorkspace
+  type ChatWorkspace,
+  type ChatContextSettings
 } from './workspace';
 import './styles.css';
 
@@ -125,6 +127,11 @@ export default function App() {
   const activeIndex = steps.findIndex((item) => item.id === appState.step);
   const modelReady = modelStatus?.status === 'success';
   const reflectionSession = chatWorkspace.activeSession ?? emptyChatSession;
+  const activeChatContext = resolveChatContext(
+    reflectionSession.context,
+    profileHistory.currentProfileId,
+    workspaceMetadata.materials.map((material) => material.storedName)
+  );
 
   const modelConfig = appState.modelConfig;
 
@@ -414,7 +421,8 @@ export default function App() {
         ? await saveChatSession(workspaceHandle, nextSession)
         : await createChatSession(workspaceHandle, {
             title: '关于这次画像',
-            profileSupplement: nextSession.profileSupplement
+            profileSupplement: nextSession.profileSupplement,
+            context: activeChatContext
           });
       setChatWorkspace(saved);
     } else {
@@ -434,7 +442,7 @@ export default function App() {
         }
       : null;
     if (!activeSession.id && workspaceHandle) {
-      const created = await createChatSession(workspaceHandle);
+      const created = await createChatSession(workspaceHandle, { context: activeChatContext });
       activeSession = created.activeSession ?? emptyChatSession;
       setChatWorkspace(created);
     }
@@ -445,24 +453,26 @@ export default function App() {
       createdAt: new Date().toISOString()
     };
     const messagesWithQuestion = [...activeSession.messages, userMessage];
-    const retrievedChunks = retrieveRelevantChunks(materialIndex, question);
+    const requestContext = resolveChatContext(
+      activeSession.context,
+      profileHistory.currentProfileId,
+      workspaceMetadata.materials.map((material) => material.storedName)
+    );
+    const contextProfile = profileHistory.versions.find((profile) => profile.id === requestContext.profileId) ?? generatedProfile;
+    const selectedIndex = filterMaterialIndex(materialIndex, requestContext.materialStoredNames);
+    const retrievedChunks = retrieveRelevantChunks(selectedIndex, question);
     const sourceNames = [...new Set(retrievedChunks.map((chunk) => chunk.sourceName))];
     setSendingChat(true);
     let reply = '';
     try {
-      reply = await requestModelText(appState.modelConfig, [
-        '只根据下面给出的阶段画像、用户补充、本地材料摘录和最近对话回答问题。',
-        '说具体一点，少用套话。可以指出不确定之处，但不要做心理诊断，也不要假装读过未提供的材料。',
-        `阶段性自我画像：\n${generatedProfile.profile}`,
-        activeSession.profileSupplement
-          ? `用户对画像的补充：\n${activeSession.profileSupplement}`
-          : '',
-        retrievedChunks.length
-          ? `本地材料摘录：\n${retrievedChunks.map((chunk) => `【${chunk.sourceName}】\n${chunk.text}`).join('\n\n')}`
-          : '这次没有找到与问题直接匹配的本地材料摘录。',
-        `最近对话：\n${messagesWithQuestion.slice(-6).map((message) => `${message.role === 'user' ? '用户' : 'AI'}：${message.content}`).join('\n')}`,
-        `用户提问：${question}`
-      ]);
+      reply = await requestModelText(appState.modelConfig, buildChatPrompts({
+        profile: contextProfile.profile,
+        profileSupplement: activeSession.profileSupplement,
+        retrievedChunks,
+        messages: messagesWithQuestion,
+        recentMessageLimit: requestContext.recentMessageLimit,
+        question
+      }));
     } catch {
       reply = '这次没有收到模型回复。你的问题已经保存在本地，可以稍后再试。';
     }
@@ -475,6 +485,7 @@ export default function App() {
     };
     const nextSession = {
       ...activeSession,
+      context: requestContext,
       title: shouldAutoNameChat(activeSession)
         ? question.replace(/\s+/g, ' ').slice(0, 24)
         : activeSession.title,
@@ -503,7 +514,7 @@ export default function App() {
     if (!appState.workspace.handle?.getFileHandle) return;
     const next = await createChatSession(appState.workspace.handle as BrowserDirectoryHandle & {
       getFileHandle: NonNullable<BrowserDirectoryHandle['getFileHandle']>;
-    });
+    }, { context: activeChatContext });
     setChatWorkspace(next);
   }
 
@@ -522,6 +533,20 @@ export default function App() {
       getFileHandle: NonNullable<BrowserDirectoryHandle['getFileHandle']>;
     }, session.id, session.title);
     setChatWorkspace(next);
+  }
+
+  async function updateCurrentChatContext(context: ChatContextSettings) {
+    if (!appState.workspace.handle?.getFileHandle) return;
+    const workspaceHandle = appState.workspace.handle as BrowserDirectoryHandle & {
+      getFileHandle: NonNullable<BrowserDirectoryHandle['getFileHandle']>;
+    };
+    if (!reflectionSession.id) {
+      const created = await createChatSession(workspaceHandle, { context });
+      setChatWorkspace(created);
+      return;
+    }
+    const saved = await saveChatSession(workspaceHandle, { ...reflectionSession, context });
+    setChatWorkspace(saved);
   }
 
   async function toggleCurrentChatArchive() {
@@ -657,6 +682,8 @@ export default function App() {
           reflectionSession,
           updateReflectionSession,
           chatWorkspace,
+          activeChatContext,
+          updateCurrentChatContext,
           beginNewChat,
           switchChat,
           renameCurrentChat,
@@ -719,6 +746,8 @@ function renderStep({
   reflectionSession,
   updateReflectionSession,
   chatWorkspace,
+  activeChatContext,
+  updateCurrentChatContext,
   beginNewChat,
   switchChat,
   renameCurrentChat,
@@ -775,6 +804,8 @@ function renderStep({
   reflectionSession: ChatSession;
   updateReflectionSession: (updater: React.SetStateAction<ChatSession>) => void;
   chatWorkspace: ChatWorkspace;
+  activeChatContext: ChatContextSettings;
+  updateCurrentChatContext: (context: ChatContextSettings) => Promise<void>;
   beginNewChat: () => Promise<void>;
   switchChat: (chatId: string) => Promise<void>;
   renameCurrentChat: () => Promise<void>;
@@ -1273,13 +1304,62 @@ function renderStep({
           ) : null}
           <div className="context-divider" />
           <strong>这次会参考</strong>
-          <ul>
-            <li>阶段性画像</li>
-            {reflectionSession.profileSupplement ? <li>你的补充</li> : null}
-            <li>{generatedProfile?.metadata.sources.length ?? 0} 条画像来源</li>
-            <li>{materialIndex.chunks.length} 段本地材料索引</li>
-            <li>{reflectionSession.messages.length} 条已保存对话</li>
-          </ul>
+          <div className="context-controls">
+            <label>
+              画像版本
+              <select
+                aria-label="聊天参考画像"
+                value={activeChatContext.profileId ?? ''}
+                onChange={(event) => void updateCurrentChatContext({ ...activeChatContext, profileId: event.target.value || null })}
+              >
+                {profileHistory.versions.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {new Date(profile.metadata.generatedAt).toLocaleDateString('zh-CN')}{profile.id === profileHistory.currentProfileId ? '（当前）' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              最近对话
+              <select
+                aria-label="最近对话条数"
+                value={activeChatContext.recentMessageLimit}
+                onChange={(event) => void updateCurrentChatContext({ ...activeChatContext, recentMessageLimit: Number(event.target.value) })}
+              >
+                <option value={4}>4 条</option>
+                <option value={6}>6 条</option>
+                <option value={10}>10 条</option>
+                <option value={16}>16 条</option>
+              </select>
+            </label>
+            <div className="material-scope-heading">
+              <span>本地材料</span>
+              <div>
+                <button onClick={() => void updateCurrentChatContext({
+                  ...activeChatContext,
+                  materialStoredNames: workspaceMetadata.materials.map((material) => material.storedName)
+                })}>全选</button>
+                <button onClick={() => void updateCurrentChatContext({ ...activeChatContext, materialStoredNames: [] })}>清空</button>
+              </div>
+            </div>
+            <div className="material-scope-list">
+              {workspaceMetadata.materials.length ? workspaceMetadata.materials.map((material) => (
+                <label key={material.storedName}>
+                  <input
+                    type="checkbox"
+                    checked={activeChatContext.materialStoredNames.includes(material.storedName)}
+                    onChange={(event) => void updateCurrentChatContext({
+                      ...activeChatContext,
+                      materialStoredNames: event.target.checked
+                        ? [...activeChatContext.materialStoredNames, material.storedName]
+                        : activeChatContext.materialStoredNames.filter((name) => name !== material.storedName)
+                    })}
+                  />
+                  <span>{material.originalName}</span>
+                </label>
+              )) : <p className="empty-list-copy">材料库还是空的。</p>}
+            </div>
+          </div>
           <p>材料只在你明确生成画像、发送消息或生成报告时，才会发给所配置的模型服务。</p>
         </aside>
 

@@ -204,6 +204,10 @@ describe('first-run flow shell', () => {
     await user.click(screen.getByRole('button', { name: /保存补充，继续聊/ }));
     expect(screen.getByRole('heading', { name: /继续对话/ })).toBeInTheDocument();
 
+    await user.click(screen.getByRole('button', { name: '清空' }));
+    await user.click(screen.getByRole('checkbox', { name: '工作笔记.md' }));
+    await user.selectOptions(screen.getByLabelText('最近对话条数'), '4');
+
     await user.type(screen.getByPlaceholderText(/稳定和自由/), '为什么工作让我疲惫？');
     await user.click(screen.getByRole('button', { name: /发送/ }));
     await waitFor(() => expect(screen.getByText(/参考：工作笔记.md/)).toBeInTheDocument());
@@ -340,16 +344,18 @@ describe('first-run flow shell', () => {
     await user.click(screen.getByRole('button', { name: /保存补充，继续聊/ }));
     await waitFor(() => expect(screen.getByRole('heading', { name: /继续对话/ })).toBeInTheDocument());
     expect(screen.getByText(/这次会参考/)).toBeInTheDocument();
-    expect(screen.getByText('阶段性画像')).toBeInTheDocument();
-    expect(screen.getByText('你的补充')).toBeInTheDocument();
+    expect(screen.getByLabelText('聊天参考画像')).toBeInTheDocument();
+    expect(screen.getByLabelText('最近对话条数')).toHaveValue('6');
 
     await user.type(screen.getByPlaceholderText(/稳定和自由/), '我为什么一直犹豫？');
     await user.click(screen.getByRole('button', { name: /发送/ }));
     await waitFor(() => expect(screen.getByText(/更稳定的自我站位/)).toBeInTheDocument());
     expect(screen.getByRole('button', { name: '我为什么一直犹豫？' })).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('最近对话条数'), '4');
 
     await user.click(screen.getByRole('button', { name: /新建对话/ }));
     expect(screen.getByText(/可以直接问/)).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('最近对话条数'), '10');
     const titleInput = screen.getByLabelText('对话名称');
     await user.clear(titleInput);
     await user.type(titleInput, '关于下一步');
@@ -359,6 +365,11 @@ describe('first-run flow shell', () => {
     await user.type(screen.getByLabelText('搜索会话'), '下一步');
     expect(screen.queryByRole('button', { name: '我为什么一直犹豫？' })).not.toBeInTheDocument();
     await user.clear(screen.getByLabelText('搜索会话'));
+
+    await user.click(screen.getByRole('button', { name: '我为什么一直犹豫？' }));
+    expect(screen.getByLabelText('最近对话条数')).toHaveValue('4');
+    await user.click(screen.getByRole('button', { name: '关于下一步' }));
+    expect(screen.getByLabelText('最近对话条数')).toHaveValue('10');
 
     await user.click(screen.getByRole('button', { name: '归档会话' }));
     await user.click(screen.getByRole('button', { name: '已归档' }));

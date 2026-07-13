@@ -20,7 +20,8 @@ body {
 
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 
@@ -320,7 +321,8 @@ button:disabled {
 }
 
 input,
-textarea {
+textarea,
+select {
   width: 100%;
   color: #263027;
   background: #fffaf1;
@@ -334,6 +336,11 @@ input {
   padding: 0 12px;
 }
 
+select {
+  height: 42px;
+  padding: 0 34px 0 10px;
+}
+
 textarea {
   min-height: 150px;
   padding: 14px;
@@ -341,7 +348,8 @@ textarea {
 }
 
 input:focus,
-textarea:focus {
+textarea:focus,
+select:focus {
   border-color: #2f5849;
   box-shadow: 0 0 0 3px rgba(47, 88, 73, 0.12);
 }
@@ -717,6 +725,66 @@ textarea:focus {
   height: 1px;
   margin: 20px 0;
   background: rgba(93, 83, 65, 0.16);
+}
+
+.context-controls {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.context-controls > label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.material-scope-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.material-scope-heading div {
+  display: flex;
+  gap: 8px;
+}
+
+.material-scope-heading button {
+  padding: 0;
+  color: #2f5849;
+  background: transparent;
+  border: 0;
+  font-size: 0.76rem;
+}
+
+.material-scope-list {
+  display: grid;
+  gap: 7px;
+  max-height: 150px;
+  overflow: auto;
+}
+
+.material-scope-list label {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 7px;
+  align-items: center;
+  font-size: 0.8rem;
+}
+
+.material-scope-list input {
+  width: 16px;
+  height: 16px;
+}
+
+.material-scope-list span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .report-actions,

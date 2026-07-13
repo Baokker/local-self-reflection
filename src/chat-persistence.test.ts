@@ -56,7 +56,14 @@ class MemoryFileHandle {
 describe('multiple local chat sessions', () => {
   it('creates, renames, switches, and restores independent conversations', async () => {
     const root = new MemoryDirectoryHandle('root');
-    const first = await createChatSession(root, { title: '关于工作' });
+    const first = await createChatSession(root, {
+      title: '关于工作',
+      context: {
+        profileId: 'profile-old',
+        materialStoredNames: ['work.md'],
+        recentMessageLimit: 4
+      }
+    });
     const firstSaved = await saveChatSession(root, {
       ...first.activeSession!,
       messages: [{ role: 'user', content: '我对工作有些犹豫。', createdAt: '2026-07-13T01:00:00.000Z' }]
@@ -74,6 +81,11 @@ describe('multiple local chat sessions', () => {
 
     const restored = await ensureChatWorkspace(root);
     expect(restored.activeSession?.id).toBe(firstSaved.activeSession!.id);
+    expect(restored.activeSession?.context).toEqual({
+      profileId: 'profile-old',
+      materialStoredNames: ['work.md'],
+      recentMessageLimit: 4
+    });
   });
 
   it('migrates the legacy session without changing the old file', async () => {

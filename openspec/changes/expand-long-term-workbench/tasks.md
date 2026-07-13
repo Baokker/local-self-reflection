@@ -22,11 +22,11 @@
 
 ## 4. Per-Chat Context
 
-- [ ] 4.1 Add backward-compatible context settings to chat session files.
-- [ ] 4.2 Build profile-version, material-scope, and message-window controls.
-- [ ] 4.3 Restrict each model request to the selected profile, materials, and recent messages.
-- [ ] 4.4 Restore context settings when switching chats.
-- [ ] 4.5 Add context persistence and request-boundary tests and commit the change.
+- [x] 4.1 Add backward-compatible context settings to chat session files.
+- [x] 4.2 Build profile-version, material-scope, and message-window controls.
+- [x] 4.3 Restrict each model request to the selected profile, materials, and recent messages.
+- [x] 4.4 Restore context settings when switching chats.
+- [x] 4.5 Add context persistence and request-boundary tests and commit the change.
 
 ## 5. Expandable Citations
 
