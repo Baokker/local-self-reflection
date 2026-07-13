@@ -10,12 +10,16 @@ import {
   ShieldCheck,
   Upload,
   ExternalLink,
-  Plus
+  Plus,
+  ClipboardList,
+  ChartNoAxesColumnIncreasing,
+  X
 } from 'lucide-react';
 import { createInitialAppState, handleWorkspacePicked, type AppState, type Step } from './app-state';
 import { buildProfilePipeline } from './analysis';
 import { findNextQuestionIndex, REFLECTION_QUESTIONS } from './onboarding';
 import { emptyMaterialIndex, retrieveRelevantChunks, type MaterialIndex } from './retrieval';
+import { buildReportPrompt, reportTitle, type ReflectionReport, type ReportType } from './reports';
 import {
   DEFAULT_DEEPSEEK_BASE_URL,
   DEFAULT_DEEPSEEK_MODEL,
@@ -35,6 +39,8 @@ import {
   activateChatSession,
   renameChatSession,
   saveChatSession,
+  saveReflectionReport,
+  loadReflectionReports,
   saveGeneratedProfile,
   saveOnboardingAnswer,
   startNewOnboardingSession,
@@ -93,6 +99,9 @@ export default function App() {
   const [chatWorkspace, setChatWorkspace] = useState<ChatWorkspace>(emptyChatWorkspace);
   const [chatInput, setChatInput] = useState('');
   const [sendingChat, setSendingChat] = useState(false);
+  const [reports, setReports] = useState<ReflectionReport[]>([]);
+  const [selectedReport, setSelectedReport] = useState<ReflectionReport | null>(null);
+  const [generatingReport, setGeneratingReport] = useState<ReportType | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const activeIndex = steps.findIndex((item) => item.id === appState.step);
   const modelReady = modelStatus?.status === 'success';
@@ -118,6 +127,7 @@ export default function App() {
       const next = await handleWorkspacePicked(appState, handle);
       const metadata = await loadWorkspaceMetadata(handle);
       const localIndex = await loadMaterialIndex(handle);
+      const savedReports = await loadReflectionReports(handle);
       const history = await ensureProfileHistory(handle as BrowserDirectoryHandle & {
         getFileHandle: NonNullable<BrowserDirectoryHandle['getFileHandle']>;
       });
@@ -135,6 +145,7 @@ export default function App() {
       setAppState({ ...next, step: resumedStep });
       setWorkspaceMetadata(metadata);
       setMaterialIndex(localIndex);
+      setReports(savedReports);
       const questionIndex = findNextQuestionIndex(next.onboardingSession?.answers ?? []);
       const currentAnswer = next.onboardingSession?.answers.find((item) => item.stepIndex === questionIndex + 1);
       setCurrentQuestionIndex(questionIndex);
@@ -459,6 +470,36 @@ export default function App() {
     setChatWorkspace(next);
   }
 
+  async function generateReport(type: ReportType) {
+    if (!generatedProfile || !appState.workspace.handle?.getFileHandle) return;
+    const query = type === 'swot'
+      ? '优势 能力 短板 困难 机会 变化 风险 担心'
+      : '最近 阶段 变化 反复 消耗 选择 计划 下个月';
+    const excerpts = retrieveRelevantChunks(materialIndex, query, { limit: 4, maxTotalChars: 2200 });
+    setGeneratingReport(type);
+    try {
+      const content = await requestModelText(appState.modelConfig, [buildReportPrompt({
+        type,
+        profile: generatedProfile.profile,
+        profileSupplement: reflectionSession.profileSupplement,
+        materialExcerpts: excerpts.map(({ sourceName, text }) => ({ sourceName, text }))
+      })], 0.5, 1400);
+      const report = await saveReflectionReport(appState.workspace.handle as BrowserDirectoryHandle & {
+        getFileHandle: NonNullable<BrowserDirectoryHandle['getFileHandle']>;
+      }, {
+        type,
+        title: reportTitle(type),
+        content: content.trim(),
+        createdAt: new Date().toISOString(),
+        sources: ['当前画像', ...new Set(excerpts.map((item) => item.sourceName))]
+      });
+      setReports((current) => [report, ...current]);
+      setSelectedReport(report);
+    } finally {
+      setGeneratingReport(null);
+    }
+  }
+
   const workspacePicked = useMemo(() => Boolean(appState.workspace.handle), [appState.workspace.handle]);
 
   return (
@@ -519,6 +560,11 @@ export default function App() {
           beginNewChat,
           switchChat,
           renameCurrentChat,
+          reports,
+          selectedReport,
+          setSelectedReport,
+          generatingReport,
+          generateReport,
           continueToChat,
           chatInput,
           setChatInput,
@@ -564,6 +610,11 @@ function renderStep({
   beginNewChat,
   switchChat,
   renameCurrentChat,
+  reports,
+  selectedReport,
+  setSelectedReport,
+  generatingReport,
+  generateReport,
   continueToChat,
   chatInput,
   setChatInput,
@@ -603,6 +654,11 @@ function renderStep({
   beginNewChat: () => Promise<void>;
   switchChat: (chatId: string) => Promise<void>;
   renameCurrentChat: () => Promise<void>;
+  reports: ReflectionReport[];
+  selectedReport: ReflectionReport | null;
+  setSelectedReport: React.Dispatch<React.SetStateAction<ReflectionReport | null>>;
+  generatingReport: ReportType | null;
+  generateReport: (type: ReportType) => Promise<void>;
   continueToChat: () => Promise<void>;
   chatInput: string;
   setChatInput: React.Dispatch<React.SetStateAction<string>>;
@@ -919,6 +975,28 @@ function renderStep({
     >
       <div className="chat-workbench">
         <aside className="context-panel" aria-label="本次对话参考内容">
+          <strong>固定复盘</strong>
+          <div className="report-actions">
+            <button className="secondary-action" onClick={() => void generateReport('stage-review')} disabled={Boolean(generatingReport)}>
+              <ClipboardList size={16} />
+              {generatingReport === 'stage-review' ? '正在生成' : '阶段复盘'}
+            </button>
+            <button className="secondary-action" onClick={() => void generateReport('swot')} disabled={Boolean(generatingReport)}>
+              <ChartNoAxesColumnIncreasing size={16} />
+              {generatingReport === 'swot' ? '正在生成' : '个人 SWOT'}
+            </button>
+          </div>
+          {reports.length ? (
+            <div className="report-list">
+              {reports.map((report) => (
+                <button key={report.id} onClick={() => setSelectedReport(report)}>
+                  <span>{report.title}</span>
+                  <small>{new Date(report.createdAt).toLocaleDateString('zh-CN')}</small>
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <div className="context-divider" />
           <div className="chat-session-heading">
             <strong>本地会话</strong>
             <button className="icon-action" title="新建对话" aria-label="新建对话" onClick={() => void beginNewChat()}><Plus size={16} /></button>
@@ -957,6 +1035,19 @@ function renderStep({
         </aside>
 
         <section className="conversation" aria-label="对话记录">
+          {selectedReport ? (
+            <article className="report-reader">
+              <div className="report-reader-heading">
+                <div>
+                  <span>{new Date(selectedReport.createdAt).toLocaleString('zh-CN')}</span>
+                  <h3>{selectedReport.title}</h3>
+                </div>
+                <button className="icon-action" aria-label="关闭报告" title="关闭报告" onClick={() => setSelectedReport(null)}><X size={16} /></button>
+              </div>
+              <p>{selectedReport.content}</p>
+              <small>参考：{selectedReport.sources.join('、')}</small>
+            </article>
+          ) : null}
           {reflectionSession.messages.length ? (
             <div className="message-list">
               {reflectionSession.messages.map((message) => (

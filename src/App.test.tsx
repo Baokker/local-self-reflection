@@ -132,6 +132,15 @@ describe('first-run flow shell', () => {
           };
         }
 
+        if (String(body.messages?.[0]?.content ?? '').includes('优势、短板、机会、风险')) {
+          return {
+            ok: true,
+            json: async () => ({
+              choices: [{ message: { content: '## 优势\n- 能持续整理自己的想法。\n\n## 短板\n- 容易被琐事耗尽精力。\n\n## 机会\n- 已经开始调整生活节奏。\n\n## 风险\n- 计划过多时容易失去重点。' } }]
+            })
+          };
+        }
+
         return {
           ok: true,
           json: async () => ({
@@ -193,6 +202,11 @@ describe('first-run flow shell', () => {
     await user.type(screen.getByPlaceholderText(/稳定和自由/), '为什么工作让我疲惫？');
     await user.click(screen.getByRole('button', { name: /发送/ }));
     await waitFor(() => expect(screen.getByText(/参考：工作笔记.md/)).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: /个人 SWOT/ }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: '个人 SWOT' })).toBeInTheDocument());
+    expect(screen.getByText(/容易被琐事耗尽精力/)).toBeInTheDocument();
+    expect(screen.getByText(/参考：当前画像/)).toBeInTheDocument();
   });
 
   it('offers a limited follow-up prompt and answers inside the chat workbench', async () => {

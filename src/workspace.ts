@@ -1,4 +1,5 @@
 import { emptyMaterialIndex, indexMaterial, type MaterialIndex } from './retrieval';
+import type { ReflectionReport, ReportType } from './reports';
 
 export const WORKSPACE_DIR = 'ai-self-analysis';
 export const WORKSPACE_SUBDIRECTORIES = ['materials', 'sessions', 'profiles', 'reports', 'index'] as const;
@@ -112,6 +113,18 @@ export type ChatManifest = {
 export type ChatWorkspace = {
   manifest: ChatManifest;
   activeSession: ChatSession | null;
+};
+
+export type ReportManifestEntry = {
+  id: string;
+  type: ReportType;
+  title: string;
+  fileName: string;
+  createdAt: string;
+};
+
+export type ReportManifest = {
+  reports: ReportManifestEntry[];
 };
 
 export async function createWorkspaceStructure(root: DirectoryLike) {
@@ -396,6 +409,41 @@ export async function renameChatSession(
   return saveChatSession(root, { ...session, title: title.trim() || '未命名对话' });
 }
 
+export async function saveReflectionReport(
+  root: DirectoryWithFiles,
+  input: Omit<ReflectionReport, 'id'>
+): Promise<ReflectionReport> {
+  const manifest = await readReportManifest(root);
+  const id = await createAvailableReportId(root, manifest, input.createdAt, input.type);
+  const report: ReflectionReport = { id, ...input };
+  const entry: ReportManifestEntry = {
+    id,
+    type: report.type,
+    title: report.title,
+    fileName: `${id}.json`,
+    createdAt: report.createdAt
+  };
+  await writeWorkspaceFile(root, ['reports', entry.fileName], JSON.stringify(report, null, 2));
+  await writeWorkspaceFile(root, ['reports', 'manifest.json'], JSON.stringify({
+    reports: [...manifest.reports, entry]
+  }, null, 2));
+  return report;
+}
+
+export async function loadReflectionReports(root: DirectoryLike): Promise<ReflectionReport[]> {
+  const manifest = await readReportManifest(root);
+  const reports = (await Promise.all(manifest.reports.map(async (entry) => {
+    const existing = await readWorkspaceFile(root, ['reports', entry.fileName]);
+    if (!existing) return null;
+    try {
+      return JSON.parse(existing) as ReflectionReport;
+    } catch {
+      return null;
+    }
+  }))).filter((report): report is ReflectionReport => Boolean(report));
+  return reports.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+}
+
 function uniqueMaterialName(fileName: string) {
   const safeName = fileName.replace(/[^\w.\-\u4e00-\u9fff]/g, '_');
   return `${Date.now()}-${safeName}`;
@@ -477,6 +525,36 @@ async function ensureChatManifest(root: DirectoryWithFiles): Promise<ChatManifes
   await writeChatSession(root, session);
   await writeChatManifest(root, manifest);
   return manifest;
+}
+
+async function readReportManifest(root: DirectoryLike): Promise<ReportManifest> {
+  const existing = await readWorkspaceFile(root, ['reports', 'manifest.json']);
+  if (!existing) return { reports: [] };
+  try {
+    return JSON.parse(existing) as ReportManifest;
+  } catch {
+    return { reports: [] };
+  }
+}
+
+async function createAvailableReportId(
+  root: DirectoryLike,
+  manifest: ReportManifest,
+  createdAt: string,
+  type: ReportType
+) {
+  const timestamp = createdAt.replace(/[^0-9]/g, '').slice(0, 17) || String(Date.now());
+  const base = `${timestamp}-${type}`;
+  let candidate = base;
+  let suffix = 2;
+  while (
+    manifest.reports.some((item) => item.id === candidate) ||
+    await readWorkspaceFile(root, ['reports', `${candidate}.json`])
+  ) {
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
 }
 
 async function readChatManifest(root: DirectoryLike): Promise<ChatManifest | null> {

@@ -30,10 +30,10 @@
 
 ## 5. Fixed Reports
 
-- [ ] 5.1 Add stage-review and personal SWOT prompts.
-- [ ] 5.2 Save timestamped generated reports under `ai-self-analysis/reports/`.
-- [ ] 5.3 Build report actions and reading states in the workbench.
-- [ ] 5.4 Add report persistence tests and commit the change.
+- [x] 5.1 Add stage-review and personal SWOT prompts.
+- [x] 5.2 Save timestamped generated reports under `ai-self-analysis/reports/`.
+- [x] 5.3 Build report actions and reading states in the workbench.
+- [x] 5.4 Add report persistence tests and commit the change.
 
 ## 6. Static Deployment
 

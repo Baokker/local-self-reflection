@@ -519,6 +519,67 @@ textarea:focus {
   background: rgba(93, 83, 65, 0.16);
 }
 
+.report-actions,
+.report-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.report-actions .secondary-action {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.report-list button {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 8px 0;
+  color: #4c584e;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid rgba(93, 83, 65, 0.12);
+}
+
+.report-list small {
+  color: #7a8179;
+}
+
+.report-reader {
+  padding: 20px;
+  color: #3c473d;
+  background: #fffaf1;
+  border: 1px solid rgba(93, 83, 65, 0.16);
+  border-radius: 8px;
+}
+
+.report-reader-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.report-reader-heading span,
+.report-reader small {
+  color: #6b746b;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 0.78rem;
+}
+
+.report-reader h3 {
+  margin: 5px 0 0;
+  font-size: 1.35rem;
+}
+
+.report-reader p {
+  line-height: 1.85;
+  white-space: pre-wrap;
+}
+
 .conversation,
 .message-list {
   display: grid;
