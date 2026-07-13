@@ -13,7 +13,13 @@ import {
   Plus,
   ClipboardList,
   ChartNoAxesColumnIncreasing,
-  X
+  X,
+  LibraryBig,
+  UserRoundSearch,
+  MessagesSquare,
+  FileText,
+  Settings,
+  Save
 } from 'lucide-react';
 import { createInitialAppState, handleWorkspacePicked, type AppState, type Step } from './app-state';
 import { buildProfilePipeline } from './analysis';
@@ -30,6 +36,7 @@ import {
 } from './model';
 import {
   importMaterialFile,
+  createTextMaterial,
   ensureProfileHistory,
   loadProfileHistory,
   loadWorkspaceMetadata,
@@ -89,6 +96,9 @@ export default function App() {
   const [followUpPrompt, setFollowUpPrompt] = useState('');
   const [loadingFollowUp, setLoadingFollowUp] = useState(false);
   const [importFeedback, setImportFeedback] = useState('');
+  const [noteTitle, setNoteTitle] = useState('');
+  const [noteContent, setNoteContent] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
   const [generatedProfile, setGeneratedProfile] = useState<SavedProfile | null>(null);
   const [profileHistory, setProfileHistory] = useState<ProfileHistory>({
     currentProfileId: null,
@@ -217,6 +227,28 @@ export default function App() {
     setWorkspaceMetadata(metadata);
     setMaterialIndex(localIndex);
     setImportFeedback(`已经复制了 ${importedNames.length} 个文件：${importedNames.join('、')}`);
+  }
+
+  async function saveDirectNote() {
+    if (!noteTitle.trim() || !noteContent.trim() || !appState.workspace.handle?.getFileHandle) return;
+    setSavingNote(true);
+    const workspaceHandle = appState.workspace.handle as BrowserDirectoryHandle & {
+      getFileHandle: NonNullable<BrowserDirectoryHandle['getFileHandle']>;
+    };
+    const material = await createTextMaterial(workspaceHandle, {
+      title: noteTitle,
+      content: noteContent
+    });
+    const [metadata, localIndex] = await Promise.all([
+      loadWorkspaceMetadata(workspaceHandle),
+      loadMaterialIndex(workspaceHandle)
+    ]);
+    setWorkspaceMetadata(metadata);
+    setMaterialIndex(localIndex);
+    setNoteTitle('');
+    setNoteContent('');
+    setImportFeedback(`已经保存“${material.originalName}”。`);
+    setSavingNote(false);
   }
 
   function answerAt(index: number, answers = appState.onboardingSession?.answers ?? []) {
@@ -515,14 +547,34 @@ export default function App() {
           <ShieldCheck size={18} />
           <span>这里帮你整理自己，不做心理诊断，也不能代替专业帮助。</span>
         </div>
-        <ol className="step-list">
-          {steps.map((item, index) => (
-            <li key={item.id} className={index <= activeIndex ? 'active' : ''}>
-              <span>{index + 1}</span>
-              {item.label}
-            </li>
-          ))}
-        </ol>
+        {workspacePicked ? (
+          <nav className="workspace-nav" aria-label="工作台导航">
+            <button className={appState.step === 'import' ? 'active' : ''} onClick={() => setAppState((current) => ({ ...current, step: 'import' }))}>
+              <LibraryBig size={18} />材料
+            </button>
+            <button className={appState.step === 'profile' || appState.step === 'onboarding' ? 'active' : ''} onClick={() => setAppState((current) => ({ ...current, step: generatedProfile ? 'profile' : 'onboarding' }))}>
+              <UserRoundSearch size={18} />画像
+            </button>
+            <button className={appState.step === 'chat' ? 'active' : ''} onClick={() => setAppState((current) => ({ ...current, step: 'chat' }))}>
+              <MessagesSquare size={18} />聊天
+            </button>
+            <button className={appState.step === 'reports' ? 'active' : ''} onClick={() => setAppState((current) => ({ ...current, step: 'reports' }))}>
+              <FileText size={18} />报告
+            </button>
+            <button className={appState.step === 'model' ? 'active' : ''} onClick={() => setAppState((current) => ({ ...current, step: 'model' }))}>
+              <Settings size={18} />设置
+            </button>
+          </nav>
+        ) : (
+          <ol className="step-list">
+            {steps.map((item, index) => (
+              <li key={item.id} className={index <= activeIndex ? 'active' : ''}>
+                <span>{index + 1}</span>
+                {item.label}
+              </li>
+            ))}
+          </ol>
+        )}
       </aside>
 
       <section className="work-surface">
@@ -546,7 +598,13 @@ export default function App() {
           goToPreviousQuestion,
           continueOnboarding,
           triggerImport,
+          saveDirectNote,
           importFeedback,
+          noteTitle,
+          setNoteTitle,
+          noteContent,
+          setNoteContent,
+          savingNote,
           fileInputRef,
           generatedProfile,
           profileHistory,
@@ -596,7 +654,13 @@ function renderStep({
   goToPreviousQuestion,
   continueOnboarding,
   triggerImport,
+  saveDirectNote,
   importFeedback,
+  noteTitle,
+  setNoteTitle,
+  noteContent,
+  setNoteContent,
+  savingNote,
   fileInputRef,
   generatedProfile,
   profileHistory,
@@ -640,7 +704,13 @@ function renderStep({
   goToPreviousQuestion: () => Promise<void>;
   continueOnboarding: () => Promise<void>;
   triggerImport: (files: FileList | null) => Promise<void>;
+  saveDirectNote: () => Promise<void>;
   importFeedback: string;
+  noteTitle: string;
+  setNoteTitle: React.Dispatch<React.SetStateAction<string>>;
+  noteContent: string;
+  setNoteContent: React.Dispatch<React.SetStateAction<string>>;
+  savingNote: boolean;
   fileInputRef: React.MutableRefObject<HTMLInputElement | null>;
   generatedProfile: SavedProfile | null;
   profileHistory: ProfileHistory;
@@ -819,34 +889,65 @@ function renderStep({
   }
 
   if (step === 'import') {
+    const materials = [...workspaceMetadata.materials].sort((left, right) => right.importedAt.localeCompare(left.importedAt));
     return (
-      <Panel
+      <Panel wide
         icon={<Upload />}
-        kicker="这一步可以跳过"
-        title="有旧材料，就先放几份进来"
-        body="备忘录、随笔、日记和导出的表格都可以。现在没有也没关系，直接写下近况就行。"
+        kicker={generatedProfile ? '随时可以补充' : '这一步可以跳过'}
+        title={generatedProfile ? '材料库' : '有旧材料，就先放几份进来'}
+        body="可以上传旧笔记，也可以直接写一段近况。每份材料都会复制或新建在本地工作区，并进入本地检索索引。"
       >
-        <div className="drop-zone">目前支持 .md、.txt、.csv 和 .json。文件会复制到 ai-self-analysis/materials/。</div>
-        {workspaceMetadata.materials.length ? (
-          <div className="workspace-badge">已经放进来 {workspaceMetadata.materials.length} 份材料</div>
-        ) : null}
-        {importFeedback ? <p className="success-text"><CheckCircle2 size={16} />{importFeedback}</p> : null}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".md,.txt,.csv,.json"
-          multiple
-          hidden
-          onChange={(event) => void triggerImport(event.target.files)}
-        />
-        <div className="actions-row">
-          <button className="secondary-action" onClick={() => fileInputRef.current?.click()}>
-            选择文件
-          </button>
-          <button className="primary-action" onClick={() => setAppState((current) => ({ ...current, step: 'onboarding' }))}>
-            {workspaceMetadata.materials.length ? '材料放好了，开始写' : '暂时没有，开始写'}
-          </button>
+        <div className="material-library-layout">
+          <section className="material-add-area" aria-label="补充材料">
+            <div className="drop-zone">支持 .md、.txt、.csv 和 .json。上传时只复制一份，原文件不动。</div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".md,.txt,.csv,.json"
+              multiple
+              hidden
+              onChange={(event) => void triggerImport(event.target.files)}
+            />
+            <button className="secondary-action" onClick={() => fileInputRef.current?.click()}>
+              <Upload size={16} />选择文件
+            </button>
+
+            <div className="note-editor">
+              <strong>直接写一段</strong>
+              <label>
+                标题
+                <input value={noteTitle} onChange={(event) => setNoteTitle(event.target.value)} placeholder="比如：最近在想的事" />
+              </label>
+              <label>
+                内容
+                <textarea value={noteContent} onChange={(event) => setNoteContent(event.target.value)} placeholder="不需要写完整，先把想留下的内容写下来。" />
+              </label>
+              <button className="primary-action" onClick={() => void saveDirectNote()} disabled={!noteTitle.trim() || !noteContent.trim() || savingNote}>
+                <Save size={16} />{savingNote ? '正在保存' : '保存到材料库'}
+              </button>
+            </div>
+          </section>
+
+          <section className="material-list" aria-label="已有材料">
+            <div className="material-list-heading">
+              <strong>已有材料</strong>
+              <span>{materials.length} 份</span>
+            </div>
+            {materials.length ? materials.map((material) => (
+              <article className="material-row" key={material.storedName}>
+                <div>
+                  <strong>{material.originalName}</strong>
+                  <span>{material.kind === 'note' ? '直接写入' : material.extension.replace('.', '').toUpperCase()}</span>
+                </div>
+                <time>{new Date(material.importedAt).toLocaleString('zh-CN')}</time>
+              </article>
+            )) : <p className="empty-copy">这里还没有材料。可以先上传一份，也可以直接写几句。</p>}
+          </section>
         </div>
+        {importFeedback ? <p className="success-text"><CheckCircle2 size={16} />{importFeedback}</p> : null}
+        <button className="primary-action" onClick={() => setAppState((current) => ({ ...current, step: generatedProfile ? 'chat' : 'onboarding' }))}>
+          {generatedProfile ? '回到聊天' : '开始六问复盘'}
+        </button>
       </Panel>
     );
   }
@@ -898,6 +999,18 @@ function renderStep({
   }
 
   if (step === 'profile') {
+    if (!generatedProfile) {
+      return (
+        <Panel
+          icon={<UserRoundSearch />}
+          kicker="还没有画像"
+          title="先完成一次六问复盘"
+          body="回答六个问题后，这里会出现第一份阶段画像。以后每次重新复盘，旧版本都会保留。"
+        >
+          <button className="primary-action" onClick={() => void beginNewReflection()}>开始六问复盘</button>
+        </Panel>
+      );
+    }
     const viewedProfile = profileHistory.versions.find((item) => item.id === selectedProfileId) ?? generatedProfile;
     const viewingCurrent = selectedProfileId === profileHistory.currentProfileId;
     return (
@@ -962,6 +1075,52 @@ function renderStep({
         <button className="primary-action" onClick={() => void continueToChat()}>
           保存补充，继续聊
         </button>
+      </Panel>
+    );
+  }
+
+  if (step === 'reports') {
+    return (
+      <Panel
+        icon={<FileText />}
+        kicker="保存在本地"
+        title="复盘报告"
+        body="阶段复盘和个人 SWOT 都会保存成独立文件。旧报告不会被新报告覆盖。"
+      >
+        {generatedProfile ? (
+          <div className="report-actions horizontal">
+            <button className="secondary-action" onClick={() => void generateReport('stage-review')} disabled={Boolean(generatingReport)}>
+              <ClipboardList size={16} />{generatingReport === 'stage-review' ? '正在生成' : '生成阶段复盘'}
+            </button>
+            <button className="secondary-action" onClick={() => void generateReport('swot')} disabled={Boolean(generatingReport)}>
+              <ChartNoAxesColumnIncreasing size={16} />{generatingReport === 'swot' ? '正在生成' : '生成个人 SWOT'}
+            </button>
+          </div>
+        ) : (
+          <p className="empty-copy">先生成一份阶段画像，才能整理报告。</p>
+        )}
+        <div className="standalone-report-list">
+          {reports.length ? reports.map((report) => (
+            <button key={report.id} className={selectedReport?.id === report.id ? 'active' : ''} onClick={() => setSelectedReport(report)}>
+              <span>{report.title}</span>
+              <small>{new Date(report.createdAt).toLocaleString('zh-CN')}</small>
+            </button>
+          )) : <p className="empty-copy">还没有保存过报告。</p>}
+        </div>
+        {selectedReport ? <ReportReader report={selectedReport} onClose={() => setSelectedReport(null)} /> : null}
+      </Panel>
+    );
+  }
+
+  if (!generatedProfile) {
+    return (
+      <Panel
+        icon={<MessageCircle />}
+        kicker="聊天前先准备画像"
+        title="这里还不能开始对话"
+        body="先完成一次六问复盘。聊天时，AI 才有一份明确的阶段画像可以参考。"
+      >
+        <button className="primary-action" onClick={() => void beginNewReflection()}>开始六问复盘</button>
       </Panel>
     );
   }
@@ -1106,6 +1265,22 @@ async function requestModelText(config: { baseUrl: string; apiKey: string; model
   });
   const payload = await response.json();
   return payload.choices?.[0]?.message?.content ?? '';
+}
+
+function ReportReader({ report, onClose }: { report: ReflectionReport; onClose: () => void }) {
+  return (
+    <article className="report-reader standalone">
+      <div className="report-reader-heading">
+        <div>
+          <span>{new Date(report.createdAt).toLocaleString('zh-CN')}</span>
+          <h3>{report.title}</h3>
+        </div>
+        <button className="icon-action" aria-label="关闭报告" title="关闭报告" onClick={onClose}><X size={16} /></button>
+      </div>
+      <p>{report.content}</p>
+      <small>参考：{report.sources.join('、')}</small>
+    </article>
+  );
 }
 
 function Panel({

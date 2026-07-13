@@ -28,6 +28,7 @@ export type ImportedMaterial = {
   storedName: string;
   extension: string;
   importedAt: string;
+  kind?: 'file' | 'note';
 };
 
 export type WorkspaceMetadata = {
@@ -169,7 +170,8 @@ export async function importMaterialFile(root: DirectoryWithFiles, file: File): 
     originalName: file.name,
     storedName,
     extension,
-    importedAt: new Date().toISOString()
+    importedAt: new Date().toISOString(),
+    kind: 'file' as const
   };
 
   const metadata = await loadWorkspaceMetadata(root);
@@ -185,6 +187,45 @@ export async function importMaterialFile(root: DirectoryWithFiles, file: File): 
   await writeWorkspaceFile(root, ['index', 'material-chunks.json'], JSON.stringify(index, null, 2));
 
   return imported;
+}
+
+export async function createTextMaterial(
+  root: DirectoryWithFiles,
+  input: { title: string; content: string }
+): Promise<ImportedMaterial> {
+  const title = input.title.trim();
+  const content = input.content.trim();
+  if (!title || !content) throw new Error('Title and content are required.');
+
+  const originalName = `${title}.md`;
+  const storedName = uniqueMaterialName(originalName);
+  const text = `# ${title}\n\n${content}\n`;
+  const workspace = (await createWorkspaceStructure(root)) as DirectoryWithFiles;
+  const materials = (await workspace.getDirectoryHandle('materials', { create: true })) as DirectoryWithFiles;
+  const target = await materials.getFileHandle(storedName, { create: true });
+  const writable = await target.createWritable();
+  await writable.write(text);
+  await writable.close();
+
+  const material: ImportedMaterial = {
+    originalName,
+    storedName,
+    extension: '.md',
+    importedAt: new Date().toISOString(),
+    kind: 'note'
+  };
+  const metadata = await loadWorkspaceMetadata(root);
+  metadata.materials.push(material);
+  await writeWorkspaceFile(root, ['index', 'materials.json'], JSON.stringify(metadata, null, 2));
+
+  const index = await loadMaterialIndex(root);
+  index.chunks = [
+    ...index.chunks,
+    ...indexMaterial({ sourceName: originalName, storedName, text })
+  ];
+  index.updatedAt = new Date().toISOString();
+  await writeWorkspaceFile(root, ['index', 'material-chunks.json'], JSON.stringify(index, null, 2));
+  return material;
 }
 
 export async function loadWorkspaceMetadata(root: DirectoryLike): Promise<WorkspaceMetadata> {

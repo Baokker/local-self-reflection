@@ -1,10 +1,10 @@
 ## 1. Navigation And Materials
 
-- [ ] 1.1 Add persistent workspace navigation for materials, profiles, chats, reports, and settings.
-- [ ] 1.2 Add empty states and navigation guards for areas without profiles, chats, or reports.
-- [ ] 1.3 Add direct Markdown note creation under the product-owned materials directory.
-- [ ] 1.4 Build the ongoing material library with uploads, notes, metadata, and newest-first listing.
-- [ ] 1.5 Add navigation and material-library tests and commit the change.
+- [x] 1.1 Add persistent workspace navigation for materials, profiles, chats, reports, and settings.
+- [x] 1.2 Add empty states and navigation guards for areas without profiles, chats, or reports.
+- [x] 1.3 Add direct Markdown note creation under the product-owned materials directory.
+- [x] 1.4 Build the ongoing material library with uploads, notes, metadata, and newest-first listing.
+- [x] 1.5 Add navigation and material-library tests and commit the change.
 
 ## 2. Profile Renewal
 

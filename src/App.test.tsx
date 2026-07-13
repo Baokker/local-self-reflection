@@ -188,7 +188,12 @@ describe('first-run flow shell', () => {
     await user.upload(fileInput, new File(['最近工作让我很疲惫，我想换一种生活节奏。'], '工作笔记.md', { type: 'text/markdown' }));
     await waitFor(() => expect(screen.getByText(/已经复制了 1 个文件/)).toBeInTheDocument());
 
-    await user.click(screen.getByRole('button', { name: /开始写/ }));
+    await user.type(screen.getByLabelText('标题'), '今天的补充');
+    await user.type(screen.getByLabelText('内容'), '我发现安静写东西的时候，状态会好一些。');
+    await user.click(screen.getByRole('button', { name: /保存到材料库/ }));
+    await waitFor(() => expect(screen.getByText('今天的补充.md')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: /开始六问复盘/ }));
     expect(screen.getByRole('heading', { name: /最近什么事/ })).toBeInTheDocument();
 
     await answerGuidedQuestions(user);
@@ -207,6 +212,12 @@ describe('first-run flow shell', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: '个人 SWOT' })).toBeInTheDocument());
     expect(screen.getByText(/容易被琐事耗尽精力/)).toBeInTheDocument();
     expect(screen.getByText(/参考：当前画像/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '材料' }));
+    expect(screen.getByRole('heading', { name: '材料库' })).toBeInTheDocument();
+    expect(screen.getByText('工作笔记.md')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '报告' }));
+    expect(screen.getByRole('heading', { name: '复盘报告' })).toBeInTheDocument();
   });
 
   it('offers a limited follow-up prompt and answers inside the chat workbench', async () => {
@@ -221,7 +232,7 @@ describe('first-run flow shell', () => {
     await waitFor(() => expect(screen.getByText(/连接成功/)).toBeInTheDocument());
 
     await user.click(screen.getByRole('button', { name: /连接好了，继续/ }));
-    await user.click(screen.getByRole('button', { name: /暂时没有/ }));
+    await user.click(screen.getByRole('button', { name: /开始六问复盘/ }));
 
     await user.type(screen.getByPlaceholderText(/想到哪写到哪/), '我最近总是在想，怎样才能过一种更贴近自己的生活。');
     await user.click(screen.getByRole('button', { name: /帮我再问一句/ }));
@@ -271,6 +282,22 @@ describe('first-run flow shell', () => {
     expect(screen.getByRole('button', { name: /连接好了，继续/ })).toBeDisabled();
   });
 
+  it('keeps all workbench areas reachable and shows honest empty states', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole('button', { name: /^开始$/ }));
+    await user.click(screen.getByRole('button', { name: /^选择文件夹$/ }));
+    await waitFor(() => expect(screen.getByRole('navigation', { name: '工作台导航' })).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: '聊天' }));
+    expect(screen.getByRole('heading', { name: /这里还不能开始对话/ })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '报告' }));
+    expect(screen.getByText(/先生成一份阶段画像/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '设置' }));
+    expect(screen.getByRole('heading', { name: /连接 DeepSeek/ })).toBeInTheDocument();
+  });
+
   it('starts another reflection round and keeps both profile versions', async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -281,7 +308,7 @@ describe('first-run flow shell', () => {
     await user.click(screen.getByRole('button', { name: /^测试连接$/ }));
     await waitFor(() => expect(screen.getByText(/连接成功/)).toBeInTheDocument());
     await user.click(screen.getByRole('button', { name: /连接好了，继续/ }));
-    await user.click(screen.getByRole('button', { name: /暂时没有/ }));
+    await user.click(screen.getByRole('button', { name: /开始六问复盘/ }));
     await answerGuidedQuestions(user);
     await waitFor(() => expect(screen.getByText('1 个版本')).toBeInTheDocument());
 
@@ -304,7 +331,7 @@ describe('first-run flow shell', () => {
     await user.click(screen.getByRole('button', { name: /^测试连接$/ }));
     await waitFor(() => expect(screen.getByText(/连接成功/)).toBeInTheDocument());
     await user.click(screen.getByRole('button', { name: /连接好了，继续/ }));
-    await user.click(screen.getByRole('button', { name: /暂时没有/ }));
+    await user.click(screen.getByRole('button', { name: /开始六问复盘/ }));
     await answerGuidedQuestions(user);
     await waitFor(() => expect(screen.getByRole('heading', { name: /这份画像只代表现在/ })).toBeInTheDocument());
 

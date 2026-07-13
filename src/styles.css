@@ -135,6 +135,32 @@ button:disabled {
   border-color: #f2dfb6;
 }
 
+.workspace-nav {
+  display: grid;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.workspace-nav button {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 42px;
+  padding: 0 12px;
+  color: rgba(255, 250, 241, 0.72);
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+
+.workspace-nav button.active,
+.workspace-nav button:hover {
+  color: #fffaf1;
+  background: rgba(255, 250, 241, 0.1);
+  border-color: rgba(255, 250, 241, 0.18);
+}
+
 .work-surface {
   display: grid;
   min-height: 100vh;
@@ -342,6 +368,126 @@ textarea:focus {
   margin: 24px 0;
   color: #586258;
   border-style: dashed;
+}
+
+.material-library-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.8fr) minmax(320px, 1.2fr);
+  gap: 30px;
+  margin: 24px 0;
+}
+
+.material-add-area,
+.material-list,
+.note-editor {
+  display: grid;
+  gap: 14px;
+}
+
+.material-add-area .drop-zone {
+  margin: 0;
+}
+
+.material-add-area > .secondary-action,
+.note-editor .primary-action,
+.report-actions.horizontal .secondary-action {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+}
+
+.note-editor {
+  padding-top: 20px;
+  margin-top: 6px;
+  border-top: 1px solid rgba(93, 83, 65, 0.16);
+}
+
+.note-editor label {
+  display: grid;
+  gap: 7px;
+  color: #3d493f;
+  font-weight: 700;
+}
+
+.note-editor textarea {
+  min-height: 170px;
+}
+
+.material-list-heading,
+.material-row,
+.standalone-report-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.material-list-heading span {
+  color: #6b746b;
+  font-size: 0.85rem;
+}
+
+.material-row {
+  gap: 18px;
+  padding: 13px 0;
+  border-bottom: 1px solid rgba(93, 83, 65, 0.14);
+}
+
+.material-row div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.material-row strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.material-row span,
+.material-row time,
+.standalone-report-list small {
+  color: #6b746b;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 0.78rem;
+}
+
+.material-row time {
+  flex: 0 0 auto;
+}
+
+.empty-copy {
+  color: #6b746b;
+  line-height: 1.7;
+}
+
+.report-actions.horizontal {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 22px 0;
+}
+
+.standalone-report-list {
+  display: grid;
+  margin: 18px 0;
+  border-top: 1px solid rgba(93, 83, 65, 0.14);
+}
+
+.standalone-report-list button {
+  padding: 13px 4px;
+  color: #3d493f;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid rgba(93, 83, 65, 0.14);
+}
+
+.standalone-report-list button.active {
+  color: #2f5849;
+  font-weight: 700;
+}
+
+.report-reader.standalone {
+  margin-top: 20px;
 }
 
 .profile-preview {
@@ -657,6 +803,25 @@ textarea:focus {
 
   .info-grid,
   .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-nav {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    margin-top: 4px;
+  }
+
+  .workspace-nav button {
+    flex-direction: column;
+    gap: 4px;
+    justify-content: center;
+    min-height: 58px;
+    padding: 7px 4px;
+    font-size: 0.78rem;
+  }
+
+  .material-library-layout,
+  .report-actions.horizontal {
     grid-template-columns: 1fr;
   }
 

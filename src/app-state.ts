@@ -6,7 +6,7 @@ import {
   type OnboardingSession
 } from './workspace';
 
-export type Step = 'welcome' | 'workspace' | 'model' | 'import' | 'onboarding' | 'profile' | 'chat';
+export type Step = 'welcome' | 'workspace' | 'model' | 'import' | 'onboarding' | 'profile' | 'chat' | 'reports';
 
 export type PickerDirectoryHandle = {
   kind: 'directory';

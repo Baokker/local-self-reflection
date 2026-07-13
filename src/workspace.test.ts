@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createWorkspaceStructure,
+  createTextMaterial,
   importMaterialFile,
   loadLatestProfile,
   loadMaterialIndex,
@@ -128,6 +129,26 @@ describe('workspace safety', () => {
     await expect(importMaterialFile(root, new File(['x'], 'photo.png'))).rejects.toThrow(
       /supports/
     );
+  });
+
+  it('creates and indexes a direct Markdown note without changing other files', async () => {
+    const root = new MemoryDirectoryHandle('root');
+    const existing = await root.getFileHandle('原来的笔记.md', { create: true });
+    const existingWritable = await existing.createWritable();
+    await existingWritable.write('保持原样');
+    await existingWritable.close();
+
+    const note = await createTextMaterial(root, {
+      title: '今天的近况',
+      content: '我想把每天的节奏放慢一点。'
+    });
+
+    expect(note.kind).toBe('note');
+    await expect((await existing.getFile()).text()).resolves.toBe('保持原样');
+    const metadata = await loadWorkspaceMetadata(root);
+    expect(metadata.materials[0]?.originalName).toBe('今天的近况.md');
+    const index = await loadMaterialIndex(root);
+    expect(index.chunks[0]?.text).toContain('每天的节奏');
   });
 
   it('saves onboarding answers into the local workspace session file', async () => {
