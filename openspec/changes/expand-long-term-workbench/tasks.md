@@ -14,11 +14,11 @@
 
 ## 3. Chat Lifecycle Management
 
-- [ ] 3.1 Extend chat manifests with archive and soft-delete lifecycle fields.
-- [ ] 3.2 Add automatic titles from the first user message.
-- [ ] 3.3 Add active-chat search and archived-chat filtering.
-- [ ] 3.4 Add archive, unarchive, and confirmed soft-delete actions.
-- [ ] 3.5 Add lifecycle persistence and UI tests and commit the change.
+- [x] 3.1 Extend chat manifests with archive and soft-delete lifecycle fields.
+- [x] 3.2 Add automatic titles from the first user message.
+- [x] 3.3 Add active-chat search and archived-chat filtering.
+- [x] 3.4 Add archive, unarchive, and confirmed soft-delete actions.
+- [x] 3.5 Add lifecycle persistence and UI tests and commit the change.
 
 ## 4. Per-Chat Context
 

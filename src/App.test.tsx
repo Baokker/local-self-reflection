@@ -346,17 +346,34 @@ describe('first-run flow shell', () => {
     await user.type(screen.getByPlaceholderText(/稳定和自由/), '我为什么一直犹豫？');
     await user.click(screen.getByRole('button', { name: /发送/ }));
     await waitFor(() => expect(screen.getByText(/更稳定的自我站位/)).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: '我为什么一直犹豫？' })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /新建对话/ }));
-    expect(screen.queryByText('我为什么一直犹豫？')).not.toBeInTheDocument();
+    expect(screen.getByText(/可以直接问/)).toBeInTheDocument();
     const titleInput = screen.getByLabelText('对话名称');
     await user.clear(titleInput);
     await user.type(titleInput, '关于下一步');
     await user.click(screen.getByRole('button', { name: /改名/ }));
     expect(screen.getByRole('button', { name: '关于下一步' })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: '关于这次画像' }));
-    await waitFor(() => expect(screen.getByText('我为什么一直犹豫？')).toBeInTheDocument());
+    await user.type(screen.getByLabelText('搜索会话'), '下一步');
+    expect(screen.queryByRole('button', { name: '我为什么一直犹豫？' })).not.toBeInTheDocument();
+    await user.clear(screen.getByLabelText('搜索会话'));
+
+    await user.click(screen.getByRole('button', { name: '归档会话' }));
+    await user.click(screen.getByRole('button', { name: '已归档' }));
+    expect(screen.getByRole('button', { name: '关于下一步' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '关于下一步' }));
+    await user.click(screen.getByRole('button', { name: '移回进行中' }));
+    await user.click(screen.getByRole('button', { name: '进行中' }));
+
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await user.click(screen.getByRole('button', { name: '关于下一步' }));
+    await user.click(screen.getByRole('button', { name: '删除会话' }));
+    expect(screen.queryByRole('button', { name: '关于下一步' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '我为什么一直犹豫？' }));
+    await waitFor(() => expect(screen.getAllByText('我为什么一直犹豫？').length).toBeGreaterThan(0));
 
     first.unmount();
     render(<App />);
@@ -364,7 +381,7 @@ describe('first-run flow shell', () => {
     await user.click(screen.getByRole('button', { name: /^选择文件夹$/ }));
 
     await waitFor(() => expect(screen.getByRole('heading', { name: /继续对话/ })).toBeInTheDocument());
-    expect(screen.getByText('我为什么一直犹豫？')).toBeInTheDocument();
+    expect(screen.getAllByText('我为什么一直犹豫？').length).toBeGreaterThan(0);
     expect(screen.getByText(/更稳定的自我站位/)).toBeInTheDocument();
   });
 });

@@ -5,7 +5,9 @@ import {
   ensureChatWorkspace,
   renameChatSession,
   saveChatSession,
-  saveReflectionSession
+  saveReflectionSession,
+  setChatArchived,
+  softDeleteChatSession
 } from './workspace';
 
 class MemoryDirectoryHandle {
@@ -89,5 +91,28 @@ describe('multiple local chat sessions', () => {
 
     expect(migrated.activeSession?.messages[0]?.content).toBe('这是旧对话。');
     expect(legacyFile.content).toBe(original);
+  });
+
+  it('archives and soft-deletes chats without deleting their session files', async () => {
+    const root = new MemoryDirectoryHandle('root');
+    const created = await createChatSession(root, { title: '需要保留的对话' });
+    const session = created.activeSession!;
+    const workspace = root.entries.get('ai-self-analysis') as MemoryDirectoryHandle;
+    const sessions = workspace.entries.get('sessions') as MemoryDirectoryHandle;
+    const chats = sessions.entries.get('chats') as MemoryDirectoryHandle;
+    const sessionFile = chats.entries.get(`${session.id}.json`) as MemoryFileHandle;
+    const original = sessionFile.content;
+
+    const archived = await setChatArchived(root, session.id, true);
+    expect(archived.manifest.chats.find((item) => item.id === session.id)?.archivedAt).toBeTruthy();
+    expect(sessionFile.content).toBe(original);
+
+    const restored = await setChatArchived(root, session.id, false);
+    expect(restored.activeSession?.id).toBe(session.id);
+
+    const deleted = await softDeleteChatSession(root, session.id);
+    expect(deleted.manifest.chats.find((item) => item.id === session.id)?.deletedAt).toBeTruthy();
+    expect(deleted.activeSession).toBeNull();
+    expect(sessionFile.content).toBe(original);
   });
 });

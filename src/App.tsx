@@ -20,7 +20,11 @@ import {
   FileText,
   Settings,
   Save,
-  RefreshCcw
+  RefreshCcw,
+  Search,
+  Archive,
+  ArchiveRestore,
+  Trash2
 } from 'lucide-react';
 import { createInitialAppState, handleWorkspacePicked, type AppState, type Step } from './app-state';
 import { buildProfilePipeline } from './analysis';
@@ -46,6 +50,8 @@ import {
   createChatSession,
   activateChatSession,
   renameChatSession,
+  setChatArchived,
+  softDeleteChatSession,
   saveChatSession,
   saveReflectionReport,
   loadReflectionReports,
@@ -110,6 +116,8 @@ export default function App() {
   const [chatWorkspace, setChatWorkspace] = useState<ChatWorkspace>(emptyChatWorkspace);
   const [chatInput, setChatInput] = useState('');
   const [sendingChat, setSendingChat] = useState(false);
+  const [chatSearch, setChatSearch] = useState('');
+  const [showArchivedChats, setShowArchivedChats] = useState(false);
   const [reports, setReports] = useState<ReflectionReport[]>([]);
   const [selectedReport, setSelectedReport] = useState<ReflectionReport | null>(null);
   const [generatingReport, setGeneratingReport] = useState<ReportType | null>(null);
@@ -419,12 +427,24 @@ export default function App() {
     const question = (promptOverride ?? chatInput).trim();
     if (!question || !generatedProfile) return;
 
+    let activeSession = reflectionSession;
+    const workspaceHandle = appState.workspace.handle?.getFileHandle
+      ? appState.workspace.handle as BrowserDirectoryHandle & {
+          getFileHandle: NonNullable<BrowserDirectoryHandle['getFileHandle']>;
+        }
+      : null;
+    if (!activeSession.id && workspaceHandle) {
+      const created = await createChatSession(workspaceHandle);
+      activeSession = created.activeSession ?? emptyChatSession;
+      setChatWorkspace(created);
+    }
+
     const userMessage: ReflectionMessage = {
       role: 'user',
       content: question,
       createdAt: new Date().toISOString()
     };
-    const messagesWithQuestion = [...reflectionSession.messages, userMessage];
+    const messagesWithQuestion = [...activeSession.messages, userMessage];
     const retrievedChunks = retrieveRelevantChunks(materialIndex, question);
     const sourceNames = [...new Set(retrievedChunks.map((chunk) => chunk.sourceName))];
     setSendingChat(true);
@@ -434,8 +454,8 @@ export default function App() {
         '只根据下面给出的阶段画像、用户补充、本地材料摘录和最近对话回答问题。',
         '说具体一点，少用套话。可以指出不确定之处，但不要做心理诊断，也不要假装读过未提供的材料。',
         `阶段性自我画像：\n${generatedProfile.profile}`,
-        reflectionSession.profileSupplement
-          ? `用户对画像的补充：\n${reflectionSession.profileSupplement}`
+        activeSession.profileSupplement
+          ? `用户对画像的补充：\n${activeSession.profileSupplement}`
           : '',
         retrievedChunks.length
           ? `本地材料摘录：\n${retrievedChunks.map((chunk) => `【${chunk.sourceName}】\n${chunk.text}`).join('\n\n')}`
@@ -454,13 +474,14 @@ export default function App() {
       sources: sourceNames
     };
     const nextSession = {
-      ...reflectionSession,
+      ...activeSession,
+      title: shouldAutoNameChat(activeSession)
+        ? question.replace(/\s+/g, ' ').slice(0, 24)
+        : activeSession.title,
       messages: [...messagesWithQuestion, assistantMessage]
     };
-    if (appState.workspace.handle?.getFileHandle) {
-      const saved = await saveChatSession(appState.workspace.handle as BrowserDirectoryHandle & {
-        getFileHandle: NonNullable<BrowserDirectoryHandle['getFileHandle']>;
-      }, nextSession);
+    if (workspaceHandle) {
+      const saved = await saveChatSession(workspaceHandle, nextSession);
       setChatWorkspace(saved);
     } else {
       setChatWorkspace((current) => ({ ...current, activeSession: nextSession }));
@@ -501,6 +522,26 @@ export default function App() {
       getFileHandle: NonNullable<BrowserDirectoryHandle['getFileHandle']>;
     }, session.id, session.title);
     setChatWorkspace(next);
+  }
+
+  async function toggleCurrentChatArchive() {
+    const session = chatWorkspace.activeSession;
+    if (!session?.id || !appState.workspace.handle?.getFileHandle) return;
+    const entry = chatWorkspace.manifest.chats.find((item) => item.id === session.id);
+    const next = await setChatArchived(appState.workspace.handle as BrowserDirectoryHandle & {
+      getFileHandle: NonNullable<BrowserDirectoryHandle['getFileHandle']>;
+    }, session.id, !entry?.archivedAt);
+    setChatWorkspace(next.activeSession ? next : { ...next, activeSession: emptyChatSession });
+  }
+
+  async function deleteCurrentChat() {
+    const session = chatWorkspace.activeSession;
+    if (!session?.id || !appState.workspace.handle?.getFileHandle) return;
+    if (!window.confirm(`删除会话“${session.title}”？本地 JSON 文件会保留，但会话会从列表中隐藏。`)) return;
+    const next = await softDeleteChatSession(appState.workspace.handle as BrowserDirectoryHandle & {
+      getFileHandle: NonNullable<BrowserDirectoryHandle['getFileHandle']>;
+    }, session.id);
+    setChatWorkspace(next.activeSession ? next : { ...next, activeSession: emptyChatSession });
   }
 
   async function generateReport(type: ReportType) {
@@ -619,6 +660,12 @@ export default function App() {
           beginNewChat,
           switchChat,
           renameCurrentChat,
+          toggleCurrentChatArchive,
+          deleteCurrentChat,
+          chatSearch,
+          setChatSearch,
+          showArchivedChats,
+          setShowArchivedChats,
           reports,
           selectedReport,
           setSelectedReport,
@@ -675,6 +722,12 @@ function renderStep({
   beginNewChat,
   switchChat,
   renameCurrentChat,
+  toggleCurrentChatArchive,
+  deleteCurrentChat,
+  chatSearch,
+  setChatSearch,
+  showArchivedChats,
+  setShowArchivedChats,
   reports,
   selectedReport,
   setSelectedReport,
@@ -725,6 +778,12 @@ function renderStep({
   beginNewChat: () => Promise<void>;
   switchChat: (chatId: string) => Promise<void>;
   renameCurrentChat: () => Promise<void>;
+  toggleCurrentChatArchive: () => Promise<void>;
+  deleteCurrentChat: () => Promise<void>;
+  chatSearch: string;
+  setChatSearch: React.Dispatch<React.SetStateAction<string>>;
+  showArchivedChats: boolean;
+  setShowArchivedChats: React.Dispatch<React.SetStateAction<boolean>>;
   reports: ReflectionReport[];
   selectedReport: ReflectionReport | null;
   setSelectedReport: React.Dispatch<React.SetStateAction<ReflectionReport | null>>;
@@ -1126,6 +1185,13 @@ function renderStep({
     );
   }
 
+  const visibleChats = chatWorkspace.manifest.chats.filter((chat) =>
+    !chat.deletedAt &&
+    Boolean(chat.archivedAt) === showArchivedChats &&
+    chat.title.toLowerCase().includes(chatSearch.trim().toLowerCase())
+  );
+  const activeChatEntry = chatWorkspace.manifest.chats.find((chat) => chat.id === reflectionSession.id);
+
   return (
     <Panel wide
       icon={<MessageCircle />}
@@ -1165,8 +1231,16 @@ function renderStep({
             <strong>本地会话</strong>
             <button className="icon-action" title="新建对话" aria-label="新建对话" onClick={() => void beginNewChat()}><Plus size={16} /></button>
           </div>
+          <label className="chat-search">
+            <Search size={15} />
+            <input aria-label="搜索会话" value={chatSearch} onChange={(event) => setChatSearch(event.target.value)} placeholder="按名称搜索" />
+          </label>
+          <div className="chat-list-mode" aria-label="会话范围">
+            <button className={!showArchivedChats ? 'active' : ''} onClick={() => setShowArchivedChats(false)}>进行中</button>
+            <button className={showArchivedChats ? 'active' : ''} onClick={() => setShowArchivedChats(true)}>已归档</button>
+          </div>
           <div className="chat-session-list">
-            {chatWorkspace.manifest.chats.map((chat) => (
+            {visibleChats.map((chat) => (
               <button
                 className={chat.id === reflectionSession.id ? 'chat-session-item active' : 'chat-session-item'}
                 key={chat.id}
@@ -1175,6 +1249,7 @@ function renderStep({
                 {chat.title}
               </button>
             ))}
+            {!visibleChats.length ? <p className="empty-list-copy">这里没有匹配的会话。</p> : null}
           </div>
           {reflectionSession.id ? (
             <div className="rename-chat">
@@ -1184,6 +1259,16 @@ function renderStep({
                 onChange={(event) => updateReflectionSession((current) => ({ ...current, title: event.target.value }))}
               />
               <button className="secondary-action" onClick={() => void renameCurrentChat()}>改名</button>
+            </div>
+          ) : null}
+          {reflectionSession.id ? (
+            <div className="chat-lifecycle-actions">
+              <button className="icon-action" title={activeChatEntry?.archivedAt ? '移回进行中' : '归档会话'} aria-label={activeChatEntry?.archivedAt ? '移回进行中' : '归档会话'} onClick={() => void toggleCurrentChatArchive()}>
+                {activeChatEntry?.archivedAt ? <ArchiveRestore size={16} /> : <Archive size={16} />}
+              </button>
+              <button className="icon-action danger" title="删除会话" aria-label="删除会话" onClick={() => void deleteCurrentChat()}>
+                <Trash2 size={16} />
+              </button>
             </div>
           ) : null}
           <div className="context-divider" />
@@ -1286,6 +1371,11 @@ function ReportReader({ report, onClose }: { report: ReflectionReport; onClose: 
       <small>参考：{report.sources.join('、')}</small>
     </article>
   );
+}
+
+function shouldAutoNameChat(session: ChatSession) {
+  return !session.messages.some((message) => message.role === 'user') &&
+    ['新的对话', '关于这次画像', '第一次对话'].includes(session.title);
 }
 
 function Panel({

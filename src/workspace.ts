@@ -104,6 +104,8 @@ export type ChatManifestEntry = {
   fileName: string;
   createdAt: string;
   updatedAt: string;
+  archivedAt?: string;
+  deletedAt?: string;
 };
 
 export type ChatManifest = {
@@ -415,7 +417,12 @@ export async function saveChatSession(root: DirectoryWithFiles, session: ChatSes
   };
   await writeChatSession(root, nextSession);
 
-  const entry = chatEntryFromSession(nextSession);
+  const previousEntry = manifest.chats.find((item) => item.id === nextSession.id);
+  const entry = {
+    ...chatEntryFromSession(nextSession),
+    archivedAt: previousEntry?.archivedAt,
+    deletedAt: previousEntry?.deletedAt
+  };
   const nextManifest = {
     activeChatId: nextSession.id,
     chats: [...manifest.chats.filter((item) => item.id !== nextSession.id), entry]
@@ -448,6 +455,40 @@ export async function renameChatSession(
   const session = await readChatSession(root, entry.fileName);
   if (!session) return loadChatWorkspaceFromManifest(root, manifest);
   return saveChatSession(root, { ...session, title: title.trim() || '未命名对话' });
+}
+
+export async function setChatArchived(
+  root: DirectoryWithFiles,
+  chatId: string,
+  archived: boolean
+): Promise<ChatWorkspace> {
+  const manifest = await ensureChatManifest(root);
+  const nextChats = manifest.chats.map((entry) => entry.id === chatId
+    ? { ...entry, archivedAt: archived ? new Date().toISOString() : undefined }
+    : entry);
+  const nextActiveId = archived
+    ? chooseNextActiveChat(nextChats, manifest.activeChatId === chatId ? null : manifest.activeChatId)
+    : chatId;
+  const nextManifest = { activeChatId: nextActiveId, chats: nextChats };
+  await writeChatManifest(root, nextManifest);
+  return loadChatWorkspaceFromManifest(root, nextManifest);
+}
+
+export async function softDeleteChatSession(
+  root: DirectoryWithFiles,
+  chatId: string
+): Promise<ChatWorkspace> {
+  const manifest = await ensureChatManifest(root);
+  const nextChats = manifest.chats.map((entry) => entry.id === chatId
+    ? { ...entry, deletedAt: new Date().toISOString() }
+    : entry);
+  const nextActiveId = chooseNextActiveChat(
+    nextChats,
+    manifest.activeChatId === chatId ? null : manifest.activeChatId
+  );
+  const nextManifest = { activeChatId: nextActiveId, chats: nextChats };
+  await writeChatManifest(root, nextManifest);
+  return loadChatWorkspaceFromManifest(root, nextManifest);
 }
 
 export async function saveReflectionReport(
@@ -631,11 +672,19 @@ async function loadChatWorkspaceFromManifest(
   manifest: ChatManifest
 ): Promise<ChatWorkspace> {
   const sortedManifest = sortChatManifest(manifest);
-  const activeEntry = sortedManifest.chats.find((item) => item.id === sortedManifest.activeChatId);
+  const activeEntry = sortedManifest.chats.find((item) =>
+    item.id === sortedManifest.activeChatId && !item.deletedAt
+  );
   return {
     manifest: sortedManifest,
     activeSession: activeEntry ? await readChatSession(root, activeEntry.fileName) : null
   };
+}
+
+function chooseNextActiveChat(chats: ChatManifestEntry[], preferredId: string | null) {
+  const activeChats = chats.filter((entry) => !entry.archivedAt && !entry.deletedAt);
+  if (preferredId && activeChats.some((entry) => entry.id === preferredId)) return preferredId;
+  return sortChatManifest({ activeChatId: null, chats: activeChats }).chats[0]?.id ?? null;
 }
 
 function sortChatManifest(manifest: ChatManifest): ChatManifest {
