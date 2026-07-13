@@ -62,7 +62,7 @@ npm run build
 
 第一次部署时，需要在仓库的 `Settings -> Pages` 中把 `Source` 设置为 `GitHub Actions`。启用后，默认访问地址是：
 
-<https://baokker.github.io/local-self-reflection/>
+<https://baokker-blog.top/local-self-reflection/>
 
 不要把个人 API Key 放进 GitHub Secrets 或构建环境。每位使用者都应在自己的浏览器中配置模型。
 
